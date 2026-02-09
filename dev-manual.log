@@ -1,0 +1,45 @@
+$ next dev -p 3000 2>&1 | tee dev.log
+▲ Next.js 16.1.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://21.0.11.206:3000
+- Environments: .env
+
+✓ Starting...
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+✓ Ready in 539ms
+ GET / 200 in 1995ms (compile: 1874ms, render: 120ms)
+⨯ Error: Failed to load external module @prisma/client-2c3a283f134fdcb6: Error: Cannot find module '.prisma/client/default'
+Require stack:
+- /home/z/my-project/node_modules/@prisma/client/default.js
+- /home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__a1a406ef._.js
+- /home/z/my-project/.next/dev/server/chunks/[turbopack]_runtime.js
+- /home/z/my-project/.next/dev/server/app/api/admin/configuracion/route.js
+- /home/z/my-project/node_modules/next/dist/server/require.js
+- /home/z/my-project/node_modules/next/dist/server/load-components.js
+- /home/z/my-project/node_modules/next/dist/build/utils.js
+- /home/z/my-project/node_modules/next/dist/build/swc/options.js
+- /home/z/my-project/node_modules/next/dist/build/swc/index.js
+- /home/z/my-project/node_modules/next/dist/build/next-config-ts/transpile-config.js
+- /home/z/my-project/node_modules/next/dist/server/config.js
+- /home/z/my-project/node_modules/next/dist/server/next.js
+- /home/z/my-project/node_modules/next/dist/server/lib/start-server.js
+    at module evaluation (src/lib/db.ts:1:1)
+    at module evaluation (src/app/api/admin/configuracion/route.ts:2:1)
+    at Object.<anonymous> (.next/dev/server/app/api/admin/configuracion/route.js:5:3)
+> 1 | import { PrismaClient } from '@prisma/client'
+    | ^
+  2 |
+  3 | const globalForPrisma = globalThis as unknown as {
+  4 |   prisma: PrismaClient | undefined {
+  page: '/api/admin/configuracion'
+}
+ GET /api/admin/configuracion 500 in 1056ms (compile: 982ms, render: 74ms)
+error: script "dev" was terminated by signal SIGKILL (Forced quit)
+Persisting failed: Unable to write SST file 00000075.sst
+
+Caused by:
+    No such file or directory (os error 2)

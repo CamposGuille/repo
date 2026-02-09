@@ -1,0 +1,153 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Modelos para el Sistema de Gestión de Turnos
+
+model Admin {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  nombre    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Configuracion {
+  id                    String   @id @default("default")
+  titulo                String   @default("Sistema de Turnos")
+  subtitulo              String   @default("Plataforma de autogestión y atención")
+  descripcion            String   @default("Seleccione la opción que corresponda según su rol en el sistema")
+  monitorId             String?  // Monitor principal seleccionado
+
+  // Textos del Tótem de Autogestión
+  totemTitulo            String   @default("Tótem de Autogestión")
+  totemDescripcion       String   @default("Para clientes que deseen sacar un turno")
+  totemInstrucciones    String   @default("Ingrese su DNI y seleccione el servicio correspondiente")
+
+  // Textos del Monitor de Turnos
+  monitorTitulo          String   @default("Monitor de Turnos")
+  monitorSubtitulo       String   @default("Espere en la sala a ser llamado")
+  monitorPie            String   @default("Por favor, preste atención a los anuncios en voz alta")
+
+  // Textos del Operador
+  operadorTitulo         String   @default("Panel del Operador")
+  operadorInstrucciones  String   @default("Seleccione un sector para comenzar a atender")
+
+  // Configuración de Tickets
+  ticketLogoUrl         String?  // URL del logo personalizado para el ticket
+  ticketEncabezado      String   @default("TICKET DE TURNO") // Encabezado del ticket
+  ticketPie             String   @default("Gracias por su espera") // Pie de página del ticket
+  ticketColorPrimario   String   @default("#1e40af") // Color primario para el ticket
+  ticketMostrarFecha    Boolean  @default(true) // Mostrar fecha en el ticket
+  ticketMostrarHora     Boolean  @default(true) // Mostrar hora en el ticket
+  ticketMostrarOperador Boolean  @default(true) // Mostrar operador en el ticket
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Monitor {
+  id          String   @id @default(cuid())
+  nombre      String   @unique
+  descripcion String?
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sectores    MonitorSector[]
+}
+
+model MonitorSector {
+  id         String   @id @default(cuid())
+  monitorId  String
+  sectorId   String
+  monitor    Monitor   @relation(fields: [monitorId], references: [id])
+  sector     Sector    @relation(fields: [sectorId], references: [id])
+  
+  @@unique([monitorId, sectorId])
+}
+
+model Sector {
+  id          String   @id @default(cuid())
+  nombre      String   @unique // Ej: "Cajas", "Informes", "Atención al Cliente"
+  color       String   // Color para identificar visualmente el sector
+  activo      Boolean  @default(true)
+  numeroTurno Int      @default(1) // Contador para números de turno
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  turnos      Turno[]
+  monitores   MonitorSector[]
+  operadores  OperadorSector[]
+}
+
+model OperadorSector {
+  id         String   @id @default(cuid())
+  operadorId String
+  sectorId   String
+  operador   Operador @relation(fields: [operadorId], references: [id])
+  sector     Sector   @relation(fields: [sectorId], references: [id])
+
+  @@unique([operadorId, sectorId])
+}
+
+model Operador {
+  id        String   @id @default(cuid())
+  username  String   @unique // Username para login
+  password  String   // Password hasheado
+  nombre    String   // Nombre visible del operador
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sectores  OperadorSector[]
+  turnosLlamados Turno[] @relation("OperadorLlamadas")
+}
+
+model Turno {
+  id             String    @id @default(cuid())
+  numero         String    // Ej: "A-001", "B-045"
+  dni            String    // DNI del cliente
+  sectorId       String    // Sector al que pertenece el turno
+  estado         String    @default("esperando") // "esperando", "llamado", "atendiendo", "finalizado", "ausente"
+  operadorId     String?   // Operador que llamó al turno
+  fechaCreacion  DateTime  @default(now())
+  fechaLlamado   DateTime? // Cuándo fue llamado
+  fechaAtencion  DateTime? // Cuándo comenzó a ser atendido
+  fechaFinalizado DateTime? // Cuándo finalizó
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sector         Sector    @relation(fields: [sectorId], references: [id])
+  operador       Operador? @relation("OperadorLlamadas", fields: [operadorId], references: [id])
+}

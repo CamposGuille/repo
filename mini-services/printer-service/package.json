@@ -1,0 +1,12 @@
+{
+  "name": "printer-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  },
+  "dependencies": {
+    "usb": "^2.10.0"
+  }
+}
