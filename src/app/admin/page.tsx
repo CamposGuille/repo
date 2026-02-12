@@ -101,6 +101,7 @@ export default function AdminPage() {
     descripcion: '',
     monitorId: '',
     totemTitulo: '',
+    totemLogoUrl: '',
     totemDescripcion: '',
     totemInstrucciones: '',
     monitorTitulo: '',
@@ -156,6 +157,72 @@ export default function AdminPage() {
     setIsAuthenticated(false)
     setUsername('')
     setPassword('')
+  }
+
+  // Handle logo upload for totem
+  const handleUploadLogoTtem = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validar tipo de archivo
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Error',
+        description: 'Solo se permiten archivos: JPG, PNG, WebP',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Validar tamaño (máximo 200KB)
+    const maxSize = 200 * 1024
+    if (file.size > maxSize) {
+      toast({
+        title: 'Error',
+        description: 'El archivo es demasiado grande. Máximo permitido: 200KB',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Crear FormData y enviar al endpoint de upload
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const response = await fetch('/api/admin/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Actualizar el configForm con la URL del archivo subido
+        setConfigForm({
+          ...configForm,
+          totemLogoUrl: data.fileUrl
+        })
+        toast({
+          title: '¡Éxito!',
+          description: 'Logo subido correctamente',
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Error al subir el logo',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      console.error('Error al subir logo:', error)
+      toast({
+        title: 'Error',
+        description: 'Error de conexión al subir el logo',
+        variant: 'destructive',
+      })
+    }
   }
 
   // Cargar operadores
@@ -388,6 +455,7 @@ export default function AdminPage() {
           descripcion: data.descripcion,
           monitorId: data.monitorId || '',
           totemTitulo: data.totemTitulo || '',
+          totemLogoUrl: data.totemLogoUrl || '',
           totemDescripcion: data.totemDescripcion || '',
           totemInstrucciones: data.totemInstrucciones || '',
           monitorTitulo: data.monitorTitulo || '',
@@ -1147,6 +1215,42 @@ export default function AdminPage() {
                         onChange={(e) => setConfigForm({ ...configForm, totemTitulo: e.target.value })}
                         placeholder="Tótem de Autogestión"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="totemLogoUrl">Logo del Tótem (imagen)</Label>
+                      <Input
+                        id="totemLogoUrl"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadLogoTtem}
+                        className="file:mr-2"
+                      />
+                      <Input
+                        id="totemLogoUrlInput"
+                        value={configForm.totemLogoUrl}
+                        onChange={(e) => setConfigForm({ ...configForm, totemLogoUrl: e.target.value })}
+                        placeholder="URL del logo (o suba una imagen)"
+                      />
+                      {configForm.totemLogoUrl && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setConfigForm({ ...configForm, totemLogoUrl: '' })}
+                        >
+                          Limpiar
+                        </Button>
+                      )}
+                      {configForm.totemLogoUrl && (
+                        <img
+                          src={configForm.totemLogoUrl}
+                          alt="Logo del tótem"
+                          className="ml-4 h-16 w-16 object-cover rounded border"
+                        />
+                      )}
+                      <p className="text-sm text-slate-500">
+                        Suba una imagen del logo o ingrese la URL. Formatos recomendados: PNG, JPG, WebP (máx 200KB)
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="totemDescripcion">Descripción</Label>

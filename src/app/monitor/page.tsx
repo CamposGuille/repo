@@ -33,6 +33,54 @@ interface Monitor {
   activo: boolean
 }
 
+const playDingDong = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+    // Primera nota: DING (tono alto y brillante)
+    const oscillator1 = audioContext.createOscillator()
+    const gainNode1 = audioContext.createGain()
+    oscillator1.connect(gainNode1)
+    gainNode1.connect(audioContext.destination)
+    oscillator1.frequency.value = 830.61 // B5
+    oscillator1.type = 'sine'
+    gainNode1.gain.setValueAtTime(0, audioContext.currentTime)
+    gainNode1.gain.linearRampToValueAtTime(0.4, audioContext.currentTime + 0.02)
+    gainNode1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.0)
+    oscillator1.start(audioContext.currentTime)
+    oscillator1.stop(audioContext.currentTime + 1.0)
+
+    // Segunda nota: DONG (tono más bajo y resonante)
+    const oscillator2 = audioContext.createOscillator()
+    const gainNode2 = audioContext.createGain()
+    oscillator2.connect(gainNode2)
+    gainNode2.connect(audioContext.destination)
+    oscillator2.frequency.value = 587.33 // D5
+    oscillator2.type = 'sine'
+    gainNode2.gain.setValueAtTime(0, audioContext.currentTime + 0.25)
+    gainNode2.gain.linearRampToValueAtTime(0.4, audioContext.currentTime + 0.27)
+    gainNode2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.5)
+    oscillator2.start(audioContext.currentTime + 0.25)
+    oscillator2.stop(audioContext.currentTime + 1.5)
+
+    // Añadir armónicos para un sonido más rico
+    const harmonic1 = audioContext.createOscillator()
+    const gainH1 = audioContext.createGain()
+    harmonic1.connect(gainH1)
+    gainH1.connect(audioContext.destination)
+    harmonic1.frequency.value = 830.61 * 2 // Una octava arriba
+    harmonic1.type = 'sine'
+    gainH1.gain.setValueAtTime(0, audioContext.currentTime)
+    gainH1.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.02)
+    gainH1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.6)
+    harmonic1.start(audioContext.currentTime)
+    harmonic1.stop(audioContext.currentTime + 0.6)
+
+  } catch (error) {
+    console.error('Error al reproducir Ding Dong:', error)
+  }
+}
+
 const playBeep = () => {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -149,7 +197,7 @@ export default function MonitorPage() {
           nuevosTurnosLlamados.forEach((turno: TurnoActivo) => {
             turnosBeepedRef.current.add(turno.id)
           })
-          playDoubleBeep()
+          playDingDong()
         }
 
         setTurnosActivos(turnosFiltrados)
@@ -188,7 +236,18 @@ export default function MonitorPage() {
             <Card className="bg-white/10 backdrop-blur-sm border-white/20 max-w-4xl mx-auto">
               <CardContent className="p-12">
                 <div className="text-center mb-8">
-                  <MonitorIcon className="w-24 h-24 mx-auto mb-6 text-primary" />
+                  {textosConfiguracion?.totemLogoUrl ? (
+                    <img
+                      src={textosConfiguracion.totemLogoUrl}
+                      alt="Logo Institución"
+                      className="h-16 md:h-20 mx-auto mb-6 object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <MonitorIcon className="w-24 h-24 mx-auto mb-6 text-primary" />
+                  )}
                   <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
                     {textosConfiguracion?.monitorTitulo || 'Monitor de Turnos'}
                   </h1>
@@ -254,6 +313,20 @@ export default function MonitorPage() {
         ) : (
           <>
             <header className="text-center mb-4">
+              {textosConfiguracion?.totemLogoUrl ? (
+                <img
+                  src={textosConfiguracion.totemLogoUrl}
+                  alt="Logo Institución"
+                  className="h-12 md:h-16 mx-auto mb-3 object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                  }}
+                />
+              ) : (
+                <div className="flex justify-center mb-3">
+                  <MonitorIcon className="w-10 h-10 text-primary" />
+                </div>
+              )}
               <h1 className="text-4xl md:text-5xl font-bold text-white">
                 {textosConfiguracion?.monitorTitulo || 'Monitor de Turnos'}
               </h1>

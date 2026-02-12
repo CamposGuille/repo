@@ -1,7 +1,12 @@
 import { createServer } from 'http'
 import { usb } from 'usb'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 const PORT = 3004
+const USE_SYSTEM_PRINTER = true // Usar impresora predeterminada del sistema
 
 // ESC/POS Commands
 const ESC = '\x1B'
@@ -100,7 +105,7 @@ function openPrinter(printer: PrinterDevice): Promise<any> {
 
       device.open()
 
-      // Find the interface with endpoints (usually interface 0)
+      // Find interface with endpoints (usually interface 0)
       const interfaces = device.interfaces
       let selectedInterface = null
 
@@ -154,7 +159,7 @@ function sendToPrinter(data: string): Promise<void> {
       const device = selectedPrinter.device
       const interfaces = device.interfaces
 
-      // Find the first endpoint to write to
+      // Find first endpoint to write to
       for (const iface of interfaces) {
         if (iface.isClaimed) {
           const endpoints = iface.endpoints
@@ -250,6 +255,70 @@ function buildTicket(data: any): string {
   return ticket
 }
 
+// Print using system default printer (via CUPS or Windows)
+async function printWithSystemPrinter(ticketData: string): Promise<void> {
+  try {
+    // Crear un archivo temporal con el contenido del ticket
+    const fs = await import('fs')
+    const os = await import('os')
+    const path = await import('path')
+
+    const tmpDir = os.tmpdir()
+    const ticketFile = path.join(tmpDir, `ticket_${Date.now()}.txt`)
+    const buffer = Buffer.from(ticketData, 'latin1')
+
+    await fs.promises.writeFile(ticketFile, buffer)
+    console.log(`📄 Ticket guardado en: ${ticketFile}`)
+
+    // Detectar sistema operativo
+    const platform = process.platform
+
+    if (platform === 'linux') {
+      // Usar CUPS en Linux
+      console.log('🖨️  Intentando imprimir con CUPS (impresora predeterminada)...')
+      try {
+        await execAsync(`lp -o raw ${ticketFile}`)
+        console.log('✅ Impresión enviada a CUPS')
+      } catch (error) {
+        console.log('⚠️  CUPS no disponible, guardando ticket en archivo (modo desarrollo)')
+
+        // Guardar en directorio del proyecto para revisión
+        const fs = await import('fs')
+        const path = await import('path')
+
+        const ticketsDir = path.join(process.cwd(), 'tickets-generados')
+        await fs.promises.mkdir(ticketsDir, { recursive: true })
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const devTicketFile = path.join(ticketsDir, `ticket_${timestamp}.txt`)
+        await fs.promises.writeFile(devTicketFile, buffer)
+
+        console.log(`✅ Ticket guardado para revisión: ${devTicketFile}`)
+        console.log(`   NOTA: En producción con impresora real, esto imprimirá en la impresora predeterminada`)
+      }
+    } else if (platform === 'win32') {
+      // Usar impresora predeterminada en Windows
+      console.log('🖨️  Imprimiendo en Windows (impresora predeterminada)...')
+
+      // Enviar el archivo a la impresora predeterminada de Windows usando PowerShell
+      await execAsync(`powershell -Command "Get-Content -Path '${ticketFile}' | Out-Printer -Default"`)
+      console.log('✅ Impresión enviada en Windows')
+    } else {
+      throw new Error(`Sistema operativo no soportado: ${platform}`)
+    }
+
+    // Limpiar archivo temporal después de un pequeño delay
+    setTimeout(() => {
+      fs.unlink(ticketFile, (err) => {
+        if (err) console.error('Error al eliminar archivo temporal:', err)
+      })
+    }, 1000)
+  } catch (error: any) {
+    console.error('❌ Error al imprimir con impresora del sistema:', error)
+    throw new Error(`Error al imprimir: ${error.message}`)
+  }
+}
+
 // Initialize
 detectPrinters()
 
@@ -281,6 +350,7 @@ httpServer.on('request', async (req, res) => {
         vendorId: selectedPrinter.vendorId,
         productId: selectedPrinter.productId,
       } : null,
+      systemPrinter: USE_SYSTEM_PRINTER,
     }))
     return
   }
@@ -320,12 +390,6 @@ httpServer.on('request', async (req, res) => {
 
   // Print ticket
   if (pathname === '/api/imprimir' && req.method === 'POST') {
-    if (!selectedPrinter) {
-      res.writeHead(400, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: 'No hay impresora seleccionada' }))
-      return
-    }
-
     let body = ''
     req.on('data', (chunk) => body += chunk.toString())
     req.on('end', async () => {
@@ -335,15 +399,25 @@ httpServer.on('request', async (req, res) => {
         // Build ticket with ESC/POS commands
         const ticket = buildTicket(ticketData)
 
-        // Open printer if not already connected
-        if (!selectedPrinter.device) {
-          await openPrinter(selectedPrinter)
+        // Try to print with USB printer if available
+        if (selectedPrinter) {
+          // Open printer if not already connected
+          if (!selectedPrinter.device) {
+            await openPrinter(selectedPrinter)
+          }
+
+          // Send to printer
+          await sendToPrinter(ticket)
+          console.log('🖨️  Ticket impreso (USB):', ticketData.turno?.numero || '(sin número)')
+        } else if (USE_SYSTEM_PRINTER) {
+          // Use system default printer
+          await printWithSystemPrinter(ticket)
+          console.log('🖨️  Ticket impreso (Sistema):', ticketData.turno?.numero || '(sin número)')
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'No hay impresora disponible' }))
+          return
         }
-
-        // Send to printer
-        await sendToPrinter(ticket)
-
-        console.log('🖨️  Ticket impreso:', ticketData.turno?.numero || '(sin número)')
 
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ success: true }))
@@ -378,4 +452,5 @@ httpServer.listen(PORT, () => {
   console.log(`     -H "Content-Type: application/json" \\`)
   console.log(`     -d '{"title":"TICKET","turno":{"numero":"A001","sector":"Farmacia"}}'`)
   console.log(``)
+  console.log(`🖨️  Impresora del sistema: ${USE_SYSTEM_PRINTER ? 'ACTIVADA' : 'Desactivada'}`)
 })

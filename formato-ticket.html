@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ticket de Turno</title>
+  <style>
+    @page {
+      size: 80mm 90mm;
+      margin: 0;
+    }
+    @media print {
+      @page {
+        size: 80mm 90mm;
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        padding: 10px;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      * {
+        box-sizing: border-box;
+      }
+    }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      width: 80mm;
+      margin: 0 auto;
+      padding: 10px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .sector-title {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .content {
+      text-align: center;
+      margin: 20px 0;
+    }
+    .ticket-number {
+      font-size: 60px;
+      font-weight: bold;
+      margin: 15px 0;
+    }
+    .ticket-box {
+      display: inline-block;
+      padding: 20px 20px;
+      border-radius: 15px;
+      background-color: #000;
+      color: white;
+      margin: 15px 0;
+    }
+    .info {
+      text-align: center;
+      margin: 15px 0;
+      line-height: 1.8;
+      font-size: 14px;
+    }
+    .logo-img {
+      max-width: 100px;
+      max-height: 60px;
+      object-fit: contain;
+    }
+    .divider {
+      border-top: 2px dashed #000;
+      margin: 15px 0;
+    }
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-logo" style="text-align: center; margin-bottom: 15px;">
+    <img class="logo-img" src="LOGO_URL" alt="Logo Institución" onerror="this.style.display='none'" />
+  </div>
+  <div class="header">
+    <div class="sector-title">Nombre del Sector</div>
+  </div>
+  <div class="content">
+    <div class="ticket-box">
+      <div class="ticket-number">A001</div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="info">
+    <div><strong>DNI:</strong> 12.345.678</div>
+    <div><strong>Fecha:</strong> 10/02/2026</div>
+    <div><strong>Hora:</strong> 14:30</div>
+  </div>
+  <div class="divider"></div>
+  <div class="footer">
+    <p>Espere en la sala a ser llamado</p>
+    <p>¡Gracias por su paciencia!</p>
+  </div>
+</body>
+</html>

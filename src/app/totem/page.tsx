@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Clock, CheckCircle2, ArrowRight, User, Loader2, Printer, Settings, X } from 'lucide-react'
+import { Clock, CheckCircle2, ArrowRight, User, Loader2, Printer } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 
@@ -15,13 +15,7 @@ interface Sector {
   activo: boolean
 }
 
-interface Printer {
-  vendorId: number
-  productId: number
-  index: number
-}
-
-// Funcion para formatear DNI con puntos (xx.xxx.xxx)
+// Función para formatear DNI con puntos (xx.xxx.xxx)
 const formatDNI = (dni: string): string => {
   const cleaned = dni.replace(/\D/g, '')
   if (cleaned.length === 0) return ''
@@ -48,65 +42,11 @@ export default function TotemPage() {
     hora: string
   } | null>(null)
   const [printing, setPrinting] = useState(false)
-  const [showPrinterDialog, setShowPrinterDialog] = useState(false)
-  const [printers, setPrinters] = useState<Printer[]>([])
-  const [selectedPrinter, setSelectedPrinter] = useState<Printer | null>(null)
-  const [loadingPrinters, setLoadingPrinters] = useState(false)
+  const [configuracion, setConfiguracion] = useState<{
+    totemTitulo?: string
+    totemLogoUrl?: string
+  } | null>(null)
   const { toast } = useToast()
-
-  // Cargar impresoras disponibles
-  const loadPrinters = async () => {
-    setLoadingPrinters(true)
-    try {
-      const response = await fetch('/api/impresoras?XTransformPort=3004')
-      const data = await response.json()
-
-      if (response.ok && data.printers) {
-        setPrinters(data.printers)
-        setSelectedPrinter(data.selected !== -1 ? data.printers[data.selected] : null)
-      }
-    } catch (error) {
-      console.error('Error al cargar impresoras:', error)
-      toast({
-        title: 'Error',
-        description: 'No se pudo cargar la lista de impresoras',
-        variant: 'destructive'
-      })
-    } finally {
-      setLoadingPrinters(false)
-    }
-  }
-
-  // Seleccionar impresora
-  const selectPrinter = async (printer: Printer) => {
-    try {
-      const response = await fetch('/api/impresoras/seleccionar?XTransformPort=3004', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ index: printer.index }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setSelectedPrinter(printer)
-        setShowPrinterDialog(false)
-        toast({
-          title: 'Impresora seleccionada',
-          description: 'Impresora configurada correctamente',
-        })
-      }
-    } catch (error) {
-      console.error('Error al seleccionar impresora:', error)
-      toast({
-        title: 'Error',
-        description: 'No se pudo seleccionar la impresora',
-        variant: 'destructive'
-      })
-    }
-  }
 
   // Cargar sectores desde la API
   useEffect(() => {
@@ -139,6 +79,26 @@ export default function TotemPage() {
     cargarSectores()
   }, [toast])
 
+  // Cargar configuración
+  useEffect(() => {
+    const cargarConfiguracion = async () => {
+      try {
+        const response = await fetch('/api/admin/configuracion')
+        const data = await response.json()
+
+        if (response.ok) {
+          setConfiguracion(data)
+        } else {
+          console.error('Error al cargar configuración')
+        }
+      } catch (error) {
+        console.error('Error al cargar configuración:', error)
+      }
+    }
+
+    cargarConfiguracion()
+  }, [])
+
   const handleNumberClick = (num: string) => {
     if (dni.length < 8) {
       setDni(dni + num)
@@ -155,64 +115,187 @@ export default function TotemPage() {
     setTurnoAsignado(null)
   }
 
-  const handlePrint = async (datos?: {
+  const handlePrint = (datos?: {
     numero: string
     sector: string
     dni: string
     hora: string
-  }) => {
+    color?: string
+  }, silent: boolean = false) => {
     if (printing) return
 
+    // Usar los datos pasados por parámetro o el estado
     const numero = datos?.numero || turnoAsignado?.numero || ''
     const sector = datos?.sector || turnoAsignado?.sector || ''
     const dni = datos?.dni || turnoAsignado?.dni || ''
     const hora = datos?.hora || turnoAsignado?.hora || ''
+    const color = datos?.color || turnoAsignado?.color || '#1e40af'
 
     setPrinting(true)
 
     try {
-      // Llamar al servicio de impresión local
-      const response = await fetch('/api/imprimir?XTransformPort=3004', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: 'TICKET DE TURNO',
-          turno: {
-            numero,
-            sector,
-            fecha: new Date().toLocaleDateString('es-AR'),
-            hora,
-          },
-          footer: 'Espere en la sala a ser llamado. ¡Gracias por su paciencia!',
-        }),
+      // Crear una ventana nueva para imprimir el ticket
+      const printWindow = window.open('', '', 'width=400,height=600')
+      if (!printWindow) {
+        throw new Error('No se pudo abrir la ventana de impresión')
+      }
+
+      const fecha = new Date().toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
       })
 
-      const result = await response.json()
+      // Escribir el HTML del ticket en la ventana
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Ticket de Turno</title>
+          <style>
+            @page {
+              size: 80mm 90mm;
+              margin: 0;
+            }
+            @media print {
+              @page {
+                size: 80mm 90mm;
+                margin: 0;
+              }
+              body {
+                margin: 0;
+                padding: 10px;
+                font-family: Arial, sans-serif;
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              * {
+                box-sizing: border-box;
+              }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 12px;
+              width: 80mm;
+              margin: 0 auto;
+              padding: 10px;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #000;
+              padding-bottom: 10px;
+              margin-bottom: 10px;
+            }
+            .sector-title {
+              font-size: 22px;
+              font-weight: bold;
+              margin-bottom: 5px;
+            }
+            .content {
+              text-align: center;
+              margin: 20px 0;
+            }
+            .ticket-number {
+              font-size: 60px;
+              font-weight: bold;
+              margin: 15px 0;
+            }
+            .ticket-box {
+              display: inline-block;
+              padding: 20px 20px;
+              border-radius: 15px;
+              background-color: #000;
+              color: white;
+              margin: 15px 0;
+            }
+            .info {
+              text-align: center;
+              margin: 15px 0;
+              line-height: 1.8;
+              font-size: 14px;
+            }
+            .logo-img {
+              max-width: 100px;
+              max-height: 60px;
+              object-fit: contain;
+            }
+            .divider {
+              border-top: 2px dashed #000;
+              margin: 15px 0;
+            }
+            .footer {
+              text-align: center;
+              font-size: 11px;
+              margin-top: 15px;
+            }
+          </style>
+        </head>
+        <body>
+          ${configuracion?.totemLogoUrl ? `
+          <div class="header-logo" style="text-align: center; margin-bottom: 15px;">
+            <img class="logo-img" src="${configuracion.totemLogoUrl}" alt="Logo Institución" onerror="this.style.display='none'" />
+          </div>
+          ` : ''}
+          <div class="header">
+            <div class="sector-title">${sector}</div>
+          </div>
+          <div class="content">
+            <div class="ticket-box">
+              <div class="ticket-number">${numero}</div>
+            </div>
+          </div>
+          <div class="info">
+            <div><strong>DNI:</strong> ${dni}</div>
+            <div><strong>Fecha:</strong> ${fecha}</div>
+            <div><strong>Hora:</strong> ${hora}</div>
+          </div>
+          <div class="divider"></div>
+          <div class="footer">
+            <p>Espere en la sala a ser llamado</p>
+            <p>¡Gracias por su paciencia!</p>
+          </div>
+        </body>
+        </html>
+      `)
 
-      if (result.success) {
+      printWindow.document.close()
+
+      // Esperar a que el documento se cargue antes de imprimir
+      printWindow.onload = () => {
+        printWindow.focus()
+        printWindow.print()
+        printWindow.close()
+        setPrinting(false)
+      }
+
+      // Timeout por seguridad
+      setTimeout(() => {
+        if (!printWindow.closed) {
+          printWindow.close()
+        }
+        setPrinting(false)
+      }, 3000)
+
+      // Solo mostrar notificación si no es modo silencioso
+      if (!silent) {
         toast({
           title: 'Ticket impreso',
-          description: 'El ticket se ha impreso correctamente',
-        })
-      } else {
-        // Mostrar error del servicio o un mensaje genérico
-        toast({
-          title: 'Error de impresión',
-          description: result.error || 'No se pudo imprimir el ticket',
-          variant: 'destructive'
+          description: 'El ticket se ha enviado a la impresora',
         })
       }
     } catch (error) {
       console.error('Error al imprimir:', error)
-      toast({
-        title: 'Error de impresión',
-        description: 'No se pudo imprimir el ticket. Verifique que el servicio de impresión esté activo.',
-        variant: 'destructive'
-      })
-    } finally {
       setPrinting(false)
+      // Solo mostrar notificación de error si no es modo silencioso
+      if (!silent) {
+        toast({
+          title: 'Error de impresión',
+          description: 'No se pudo imprimir el ticket. Verifique que el navegador tenga permisos para imprimir.',
+          variant: 'destructive'
+        })
+      }
     }
   }
 
@@ -240,7 +323,8 @@ export default function TotemPage() {
           numero: data.numero,
           sector: data.sector.nombre,
           dni: formatDNI(dni),
-          hora: ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+          hora: ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+          color: data.sector.color
         }
 
         setTurnoAsignado({
@@ -253,8 +337,8 @@ export default function TotemPage() {
           description: `Su número es ${data.numero}. Espere en la sala.`,
         })
 
-        // Imprimir el ticket automáticamente
-        await handlePrint(datosTicket)
+        // Imprimir el ticket automáticamente en segundo plano
+        await handlePrint(datosTicket, true)
 
         // Limpiar formulario automáticamente después de 3 segundos para el próximo cliente
         setTimeout(() => {
@@ -297,30 +381,26 @@ export default function TotemPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <header className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2">
-            <Clock className="w-8 h-8 text-primary" />
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900">
-              Sistema de Turnos
-            </h1>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setShowPrinterDialog(true)}
-              className="ml-4"
-              title="Configurar impresora"
-            >
-              <Settings className="w-5 h-5" />
-            </Button>
-          </div>
+          {configuracion?.totemLogoUrl ? (
+            <img
+              src={configuracion.totemLogoUrl}
+              alt="Logo Institución"
+              className="h-20 md:h-24 mx-auto mb-4"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+              }}
+            />
+          ) : (
+            <div className="inline-flex items-center gap-2 mb-2">
+              <Clock className="w-8 h-8 text-primary" />
+            </div>
+          )}
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900">
+            {configuracion?.totemTitulo || 'Sistema de Turnos'}
+          </h1>
           <p className="text-slate-600 text-lg">
             Seleccione su servicio y obtenga su número de espera
           </p>
-          {selectedPrinter && (
-            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-              <Printer className="w-4 h-4" />
-              <span>Impresora configurada</span>
-            </div>
-          )}
         </header>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -373,6 +453,15 @@ export default function TotemPage() {
                   onClick={() => handleNumberClick('0')}
                 >
                   0
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  className="h-16 text-lg font-semibold"
+                  onClick={handleDelete}
+                  disabled={!dni}
+                >
+                  ←
                 </Button>
               </div>
             </CardContent>
@@ -470,18 +559,19 @@ export default function TotemPage() {
                   numero: turnoAsignado.numero,
                   sector: turnoAsignado.sector,
                   dni: turnoAsignado.dni,
-                  hora: turnoAsignado.hora
+                  hora: turnoAsignado.hora,
+                  color: turnoAsignado.color
                 })}
                 disabled={printing}
               >
                 {printing ? (
                   <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Imprimiendo...
                   </>
                 ) : (
                   <>
-                    <Printer className="w-5 h-5 mr-2" />
+                    <Printer className="w-4 h-4 mr-2" />
                     Reimprimir Ticket
                   </>
                 )}
@@ -490,80 +580,6 @@ export default function TotemPage() {
           </Card>
         )}
       </div>
-
-      {/* Diálogo de selección de impresora */}
-      {showPrinterDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Printer className="w-5 h-5" />
-                  Seleccionar Impresora
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowPrinterDialog(false)}
-                >
-                  <X className="w-5 h-5" />
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loadingPrinters ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-                  <p className="text-slate-600">Buscando impresoras...</p>
-                </div>
-              ) : printers.length === 0 ? (
-                <div className="text-center py-12">
-                  <Printer className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-600 mb-2">No se detectaron impresoras</p>
-                  <p className="text-sm text-slate-500 mb-4">
-                    Asegúrese de que la impresora esté conectada y encendida, y que el servicio de impresión esté corriendo en el puerto 3004.
-                  </p>
-                  <Button
-                    onClick={loadPrinters}
-                    className="w-full"
-                  >
-                    Reintentar
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {printers.map((printer, index) => (
-                    <Button
-                      key={index}
-                      variant={selectedPrinter?.index === index ? 'default' : 'outline'}
-                      className={cn(
-                        "w-full justify-start text-left h-auto py-4",
-                        selectedPrinter?.index === index && "border-2 border-primary bg-primary/10"
-                      )}
-                      onClick={() => selectPrinter(printer)}
-                    >
-                      <div className="flex items-start w-full">
-                        <Printer className="w-5 h-5 mr-3 mt-0.5" />
-                        <div className="flex-1">
-                          <div className="font-semibold">
-                            Impresora {index + 1}
-                          </div>
-                          <div className="text-sm text-slate-600">
-                            Vendor ID: 0x{printer.vendorId.toString(16).toUpperCase()}
-                          </div>
-                          <div className="text-sm text-s600">
-                            Product ID: 0x{printer.productId.toString(16).toUpperCase()}
-                          </div>
-                        </div>
-                      </div>
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   )
 }

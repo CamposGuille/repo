@@ -54,6 +54,7 @@ model Configuracion {
   totemTitulo            String   @default("Tótem de Autogestión")
   totemDescripcion       String   @default("Para clientes que deseen sacar un turno")
   totemInstrucciones    String   @default("Ingrese su DNI y seleccione el servicio correspondiente")
+  totemLogoUrl          String?  // URL del logo para el header del tótem
 
   // Textos del Monitor de Turnos
   monitorTitulo          String   @default("Monitor de Turnos")

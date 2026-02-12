@@ -54,6 +54,7 @@ export async function PUT(request: NextRequest) {
       descripcion,
       monitorId,
       totemTitulo,
+      totemLogoUrl,
       totemDescripcion,
       totemInstrucciones,
       monitorTitulo,
@@ -101,6 +102,7 @@ export async function PUT(request: NextRequest) {
 
     // Agregar campos opcionales si están presentes
     if (totemTitulo !== undefined) updateData.totemTitulo = totemTitulo
+    if (totemLogoUrl !== undefined) updateData.totemLogoUrl = totemLogoUrl
     if (totemDescripcion !== undefined) updateData.totemDescripcion = totemDescripcion
     if (totemInstrucciones !== undefined) updateData.totemInstrucciones = totemInstrucciones
     if (monitorTitulo !== undefined) updateData.monitorTitulo = monitorTitulo
@@ -124,6 +126,7 @@ export async function PUT(request: NextRequest) {
       descripcion,
       monitorId,
       totemTitulo: totemTitulo || 'Tótem de Autogestión',
+      totemLogoUrl: totemLogoUrl || null,
       totemDescripcion: totemDescripcion || 'Para clientes que deseen sacar un turno',
       totemInstrucciones: totemInstrucciones || 'Ingrese su DNI y seleccione el servicio correspondiente',
       monitorTitulo: monitorTitulo || 'Monitor de Turnos',
