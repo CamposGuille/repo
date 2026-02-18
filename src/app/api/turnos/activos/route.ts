@@ -12,6 +12,7 @@ export async function GET() {
       },
       include: {
         sector: true,
+        box: true,
         operador: {
           include: {
             sectores: {

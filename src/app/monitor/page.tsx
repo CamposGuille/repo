@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
-import { Loader2, Bell, Clock, Monitor as MonitorIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Loader2, Bell, Clock, Monitor as MonitorIcon, Volume2, VolumeX } from 'lucide-react'
 
 interface TurnoActivo {
   id: string
@@ -15,6 +16,10 @@ interface TurnoActivo {
     nombre: string
     color: string
   }
+  box?: {
+    id: string
+    nombre: string
+  } | null
   operador: {
     nombre: string
   }
@@ -81,6 +86,34 @@ const playDingDong = () => {
   }
 }
 
+// Reproducir sonido personalizado (base64 o URL)
+const playCustomSound = (soundUrl: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const audio = new Audio(soundUrl)
+      
+      // Intentar reproducir
+      audio.play()
+        .then(() => {
+          console.log('Sonido personalizado reproduciendo')
+          audio.onended = () => resolve()
+        })
+        .catch((error) => {
+          console.error('Error al reproducir sonido personalizado:', error)
+          reject(error)
+        })
+      
+      audio.onerror = (e) => {
+        console.error('Error al cargar el archivo de audio:', e)
+        reject(e)
+      }
+    } catch (error) {
+      console.error('Error al reproducir sonido personalizado:', error)
+      reject(error)
+    }
+  })
+}
+
 const playBeep = () => {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -120,6 +153,39 @@ export default function MonitorPage() {
   const [monitorConfigurado, setMonitorConfigurado] = useState<string | null>(null)
   const [monitorSeleccionado, setMonitorSeleccionado] = useState<string>('')
   const [textosConfiguracion, setTextosConfiguracion] = useState<any>(null)
+  const [monitorSonidoUrl, setMonitorSonidoUrl] = useState<string | null>(null)
+  const monitorSonidoUrlRef = useRef<string | null>(null)
+  
+  // Estado para controlar si el audio está desbloqueado
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const audioContextRef = useRef<AudioContext | null>(null)
+
+  // Función para desbloquear el audio (debe llamarse desde un evento de usuario)
+  const unlockAudio = async () => {
+    try {
+      // Crear y reanudar AudioContext
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      audioContextRef.current = audioContext
+
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
+      }
+
+      // Reproducir un sonido silencioso para desbloquear
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      gainNode.gain.value = 0 // Silencioso
+      oscillator.start()
+      oscillator.stop(audioContext.currentTime + 0.001)
+
+      setAudioUnlocked(true)
+      console.log('Audio desbloqueado correctamente')
+    } catch (error) {
+      console.error('Error al desbloquear audio:', error)
+    }
+  }
 
   const cargarMonitores = async () => {
     try {
@@ -139,6 +205,10 @@ export default function MonitorPage() {
       const data = await response.json()
       if (response.ok) {
         setTextosConfiguracion(data)
+        const sonidoUrl = data.monitorSonidoUrl || null
+        setMonitorSonidoUrl(sonidoUrl)
+        monitorSonidoUrlRef.current = sonidoUrl
+        console.log('Sonido cargado:', sonidoUrl ? 'Configurado' : 'No configurado')
         setMonitorConfigurado(data.monitorId)
         if (!urlMonitorId && data.monitorId) {
           setMonitorSeleccionado(data.monitorId)
@@ -164,7 +234,11 @@ export default function MonitorPage() {
     }
   }
 
-  const handleCambiarMonitor = (nuevoMonitorId: string) => {
+  const handleCambiarMonitor = async (nuevoMonitorId: string) => {
+    // Desbloquear audio al seleccionar monitor (interacción del usuario)
+    if (!audioUnlocked) {
+      await unlockAudio()
+    }
     setMonitorSeleccionado(nuevoMonitorId)
     const params = new URLSearchParams(window.location.search)
     params.set('monitor', nuevoMonitorId)
@@ -197,7 +271,24 @@ export default function MonitorPage() {
           nuevosTurnosLlamados.forEach((turno: TurnoActivo) => {
             turnosBeepedRef.current.add(turno.id)
           })
-          playDingDong()
+          
+          // Solo reproducir sonido si el audio está desbloqueado
+          if (audioUnlocked) {
+            // Usar sonido personalizado si está configurado, sino usar el por defecto
+            const sonidoUrl = monitorSonidoUrlRef.current
+            console.log('Reproduciendo sonido, URL configurada:', sonidoUrl ? 'Sí' : 'No')
+            if (sonidoUrl) {
+              playCustomSound(sonidoUrl).catch((err) => {
+                console.error('Error al reproducir sonido personalizado, usando default:', err)
+                // Si falla el sonido personalizado, usar el por defecto
+                playDingDong()
+              })
+            } else {
+              playDingDong()
+            }
+          } else {
+            console.log('Audio no desbloqueado, no se puede reproducir sonido automáticamente')
+          }
         }
 
         setTurnosActivos(turnosFiltrados)
@@ -229,10 +320,10 @@ export default function MonitorPage() {
   }, [monitorSeleccionado, sectoresAsignados])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-2 md:p-4 overflow-hidden">
+      <div className="h-full max-w-7xl mx-auto flex flex-col">
         {!monitorSeleccionado ? (
-          <div className="flex flex-col items-center justify-center min-h-[80vh]">
+          <div className="flex-1 flex flex-col items-center justify-center">
             <Card className="bg-white/10 backdrop-blur-sm border-white/20 max-w-4xl mx-auto">
               <CardContent className="p-12">
                 <div className="text-center mb-8">
@@ -275,12 +366,7 @@ export default function MonitorPage() {
                       {monitores.map((monitor) => (
                         <button
                           key={monitor.id}
-                          onClick={() => {
-                            setMonitorSeleccionado(monitor.id)
-                            const params = new URLSearchParams(window.location.search)
-                            params.set('monitor', monitor.id)
-                            router.push(`/monitor?${params.toString()}`)
-                          }}
+                          onClick={() => handleCambiarMonitor(monitor.id)}
                           className={`p-6 rounded-lg text-left transition-all border-2 ${
                             monitor.id === monitorConfigurado
                               ? 'bg-primary/30 border-primary shadow-lg shadow-primary/30'
@@ -312,22 +398,46 @@ export default function MonitorPage() {
           </div>
         ) : (
           <>
-            <header className="text-center mb-4">
+            {/* Botón flotante para desbloquear audio */}
+            {!audioUnlocked && (
+              <div className="fixed top-4 right-4 z-50">
+                <Button
+                  onClick={unlockAudio}
+                  variant="destructive"
+                  className="gap-2 shadow-lg animate-pulse"
+                >
+                  <VolumeX className="w-5 h-5" />
+                  Activar Sonido
+                </Button>
+              </div>
+            )}
+            
+            {/* Indicador de audio activo */}
+            {audioUnlocked && (
+              <div className="fixed top-4 right-4 z-50">
+                <div className="bg-green-600 text-white px-3 py-1.5 rounded-full text-sm flex items-center gap-2 shadow-lg">
+                  <Volume2 className="w-4 h-4" />
+                  Sonido Activado
+                </div>
+              </div>
+            )}
+            
+            <header className="text-center py-2 flex-shrink-0">
               {textosConfiguracion?.totemLogoUrl ? (
                 <img
                   src={textosConfiguracion.totemLogoUrl}
                   alt="Logo Institución"
-                  className="h-12 md:h-16 mx-auto mb-3 object-contain"
+                  className="h-8 md:h-12 mx-auto mb-2 object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none'
                   }}
                 />
               ) : (
-                <div className="flex justify-center mb-3">
-                  <MonitorIcon className="w-10 h-10 text-primary" />
+                <div className="flex justify-center mb-2">
+                  <MonitorIcon className="w-8 h-8 text-primary" />
                 </div>
               )}
-              <h1 className="text-4xl md:text-5xl font-bold text-white">
+              <h1 className="text-2xl md:text-3xl font-bold text-white">
                 {textosConfiguracion?.monitorTitulo || 'Monitor de Turnos'}
               </h1>
             </header>
@@ -337,66 +447,87 @@ export default function MonitorPage() {
                 <Loader2 className="w-16 h-16 animate-spin text-primary" />
               </div>
             ) : turnosActivos.length === 0 ? (
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20">
-                <CardContent className="p-16 text-center">
-                  <Clock className="w-24 h-24 mx-auto mb-4 text-slate-400" />
-                  <h2 className="text-3xl font-bold text-white mb-2">
-                    Sin turnos en atencion
-                  </h2>
-                  <p className="text-slate-400 text-lg">
-                    Espere a que un operador llame al proximo turno
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="flex-1 flex items-center justify-center">
+                <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+                  <CardContent className="p-8 md:p-12 text-center">
+                    <Clock className="w-16 h-16 mx-auto mb-3 text-slate-400" />
+                    <h2 className="text-2xl font-bold text-white mb-2">
+                      Sin turnos en atencion
+                    </h2>
+                    <p className="text-slate-400">
+                      Espere a que un operador llame al proximo turno
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
             ) : (
-              <div className="min-h-[calc(100vh-8rem)] flex gap-4 md:gap-6 w-full items-center justify-center flex-wrap">
+              <div className="flex-1 flex gap-4 md:gap-6 w-full items-center justify-center px-4">
                 {turnosActivos.map((turno) => (
                   <Card
                     key={turno.id}
-                    className="overflow-hidden shadow-2xl border-2 animate-in slide-in-from-bottom-4 relative min-w-0"
+                    className="overflow-hidden shadow-2xl border-2 animate-in slide-in-from-bottom-4 relative flex flex-col"
                     style={{
                       borderColor: turno.sector.color,
                       backgroundColor: 'rgba(255,255,255,0.95)',
-                      flex: turnosActivos.length === 1 ? '0 1 auto' : '1 1 0',
+                      width: turnosActivos.length === 1 ? 'auto' : 
+                             turnosActivos.length === 2 ? '48%' : 
+                             turnosActivos.length === 3 ? '32%' : '24%',
+                      minWidth: turnosActivos.length === 1 ? '450px' : '280px',
+                      maxWidth: turnosActivos.length === 1 ? '600px' : '400px'
                     }}
                   >
                     <div
-                      className="p-4 text-white"
+                      className="p-3 md:p-4 text-white flex-shrink-0"
                       style={{ backgroundColor: turno.sector.color }}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-base font-semibold opacity-90 whitespace-nowrap">
+                      <div className="flex items-center justify-between">
+                        <span className="text-base md:text-lg font-semibold opacity-90 whitespace-nowrap">
                           {turno.sector.nombre}
                         </span>
-                        <span className="px-2 py-1 bg-white/20 rounded-full text-xs whitespace-nowrap">
+                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm whitespace-nowrap">
                           {turno.estado === 'llamado' ? 'Llamando...' : 'En atencion'}
                         </span>
                       </div>
                     </div>
-                    <div className="p-6 md:p-8 flex justify-center items-center">
+                    <div className="flex justify-center items-center py-8 md:py-12">
                       <div
                         className="font-bold leading-tight text-center whitespace-nowrap"
                         style={{
-                          fontSize: turnosActivos.length === 1 ? '12vw' :
-                                   turnosActivos.length === 2 ? '10vw' :
-                                   turnosActivos.length === 3 ? '8vw' :
-                                   turnosActivos.length === 4 ? '7vw' :
-                                   '5vw',
-                          minHeight: '10vh'
+                          fontSize: turnosActivos.length === 1 ? '7rem' :
+                                   turnosActivos.length === 2 ? '5.5rem' :
+                                   turnosActivos.length === 3 ? '4rem' :
+                                   '3rem'
                         }}
                       >
                         {turno.numero}
                       </div>
                     </div>
-                    <CardContent className="pt-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-600 text-sm">Hora:</span>
+                    <CardContent className="pt-0 pb-4 flex-shrink-0">
+                      {turno.box && (
+                        <div className="flex items-center justify-center mb-3">
+                          <span
+                            className="px-12 py-3 font-bold text-white shadow-lg text-center inline-block"
+                            style={{
+                              backgroundColor: turno.sector.color,
+                              borderRadius: '25px',
+                              fontSize: turnosActivos.length === 1 ? '1.75rem' :
+                                       turnosActivos.length === 2 ? '1.5rem' :
+                                       '1.25rem',
+                              minWidth: turnosActivos.length === 1 ? '300px' : '220px'
+                            }}
+                          >
+                            {turno.box.nombre}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-slate-600 text-base">Hora:</span>
                         <span
                           className="font-semibold text-slate-900"
                           style={{
-                            fontSize: turnosActivos.length === 1 ? '1.125rem' :
-                                     turnosActivos.length === 2 ? '1rem' :
-                                     '0.875rem'
+                            fontSize: turnosActivos.length === 1 ? '1.25rem' :
+                                     turnosActivos.length === 2 ? '1.1rem' :
+                                     '1rem'
                           }}
                         >
                           {new Date(turno.fechaLlamado).toLocaleTimeString('es-AR', {

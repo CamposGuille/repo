@@ -11,6 +11,11 @@ export async function GET() {
           include: {
             sector: true
           }
+        },
+        boxes: {
+          include: {
+            box: true
+          }
         }
       },
       orderBy: {
@@ -38,7 +43,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { username, password, nombre, sectorIds, activo } = body
+    const { username, password, nombre, sectorIds, boxIds, activo } = body
 
     // Validar datos
     if (!username || !password || !nombre) {
@@ -76,6 +81,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Si se proporcionan boxIds, validar que existan
+    if (boxIds && boxIds.length > 0) {
+      for (const boxId of boxIds) {
+        const box = await db.box.findUnique({
+          where: { id: boxId }
+        })
+
+        if (!box) {
+          return NextResponse.json(
+            { error: 'Uno o más boxes no encontrados' },
+            { status: 404 }
+          )
+        }
+      }
+    }
+
     // Hashear contraseña
     const passwordHashed = await bcrypt.hash(password, 10)
 
@@ -90,12 +111,22 @@ export async function POST(request: NextRequest) {
           create: sectorIds.map((sectorId: string) => ({
             sector: { connect: { id: sectorId } }
           }))
+        } : undefined,
+        boxes: boxIds && boxIds.length > 0 ? {
+          create: boxIds.map((boxId: string) => ({
+            box: { connect: { id: boxId } }
+          }))
         } : undefined
       },
       include: {
         sectores: {
           include: {
             sector: true
+          }
+        },
+        boxes: {
+          include: {
+            box: true
           }
         }
       }

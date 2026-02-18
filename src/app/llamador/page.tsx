@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, LogOut, Users, Bell, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Loader2, LogOut, Users, Bell, CheckCircle2, Clock, XCircle, Square } from 'lucide-react'
 import { AlertCircle } from 'lucide-react'
 
 interface OperadorSector {
@@ -18,11 +19,20 @@ interface OperadorSector {
   }
 }
 
+interface OperadorBox {
+  id: string
+  box: {
+    id: string
+    nombre: string
+  }
+}
+
 interface Operador {
   id: string
   username: string
   nombre: string
   sectores: OperadorSector[]
+  boxes?: OperadorBox[]
 }
 
 interface Turno {
@@ -43,6 +53,7 @@ export default function LlamadorPage() {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [turnoActual, setTurnoActual] = useState<Turno | null>(null)
   const [loadingTurnos, setLoadingTurnos] = useState(false)
+  const [selectedBoxId, setSelectedBoxId] = useState<string>('')
 
   // Manejo de login
   const handleLogin = async (e: React.FormEvent) => {
@@ -83,6 +94,7 @@ export default function LlamadorPage() {
     setTurnoActual(null)
     setUsername('')
     setPassword('')
+    setSelectedBoxId('')
   }
 
   // Cargar turnos en espera
@@ -117,6 +129,21 @@ export default function LlamadorPage() {
   const handleLlamar = async (turno: Turno) => {
     if (!operador) return
 
+    // Si ya hay un turno activo, no permitir llamar otro
+    if (turnoActual) {
+      setError('Debe finalizar o marcar como ausente el turno actual antes de llamar otro')
+      return
+    }
+
+    // Si el operador tiene boxes asignados, debe seleccionar uno
+    if (operador.boxes && operador.boxes.length > 0 && !selectedBoxId) {
+      setError('Debe seleccionar un box antes de llamar un turno')
+      return
+    }
+
+    setError('')
+    setLoading(true)
+
     try {
       const response = await fetch('/api/turnos/llamar', {
         method: 'POST',
@@ -125,16 +152,29 @@ export default function LlamadorPage() {
         },
         body: JSON.stringify({
           turnoId: turno.id,
-          operadorId: operador.id
+          operadorId: operador.id,
+          boxId: selectedBoxId || null
         }),
       })
 
-      if (response.ok) {
-        setTurnoActual(turno)
-        await cargarTurnos()
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || 'Error al llamar turno')
+        // Si el servidor indica que hay un turno activo, cargarlo
+        if (data.turnoActivo) {
+          setTurnoActual(data.turnoActivo)
+        }
+        return
       }
+
+      setTurnoActual(turno)
+      await cargarTurnos()
     } catch (error) {
       console.error('Error al llamar turno:', error)
+      setError('Error al llamar turno')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -157,6 +197,8 @@ export default function LlamadorPage() {
       if (response.ok) {
         if (estado === 'finalizado' || estado === 'ausente') {
           setTurnoActual(null)
+          setError('')
+          await cargarTurnos()
         }
       }
     } catch (error) {
@@ -164,9 +206,27 @@ export default function LlamadorPage() {
     }
   }
 
+  // Cargar turno activo del operador al autenticarse
+  const cargarTurnoActivo = async () => {
+    if (!operador) return
+
+    try {
+      const response = await fetch(`/api/turnos/activo?operadorId=${operador.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.turno) {
+          setTurnoActual(data.turno)
+        }
+      }
+    } catch (error) {
+      console.error('Error al cargar turno activo:', error)
+    }
+  }
+
   // Cargar turnos cuando se autentica
   useEffect(() => {
     if (isAuthenticated && operador) {
+      cargarTurnoActivo()
       cargarTurnos()
 
       // Recargar turnos cada 30 segundos
@@ -262,7 +322,7 @@ export default function LlamadorPage() {
                   {' - '}
                   {operador.sectores.map((os, index) => (
                     <span key={os.sector.id}>
-                      <span 
+                      <span
                         className="inline-block px-2 py-1 rounded text-xs text-white mr-1"
                         style={{ backgroundColor: os.sector.color }}
                       >
@@ -283,6 +343,43 @@ export default function LlamadorPage() {
           </Button>
         </header>
 
+        {/* Selector de Box */}
+        {operador?.boxes && operador.boxes.length > 0 && (
+          <Card className="mb-6 border-2 border-primary/20 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <Square className="w-6 h-6 text-primary" />
+                <Label className="text-lg font-semibold">Seleccionar Box:</Label>
+                <Select value={selectedBoxId} onValueChange={setSelectedBoxId}>
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Seleccione un box" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {operador.boxes.map((ob) => (
+                      <SelectItem key={ob.box.id} value={ob.box.id}>
+                        {ob.box.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedBoxId && (
+                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                    Activo: {operador.boxes.find(ob => ob.box.id === selectedBoxId)?.box.nombre}
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Mensaje de error */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid md:grid-cols-2 gap-6">
           {/* Lista de Turnos en Espera */}
           <Card className="shadow-lg">
@@ -296,6 +393,14 @@ export default function LlamadorPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {turnoActual && (
+                <Alert className="mb-4 bg-amber-50 border-amber-200">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-700">
+                    Tiene un turno activo. Finalícelo antes de llamar otro.
+                  </AlertDescription>
+                </Alert>
+              )}
               {loadingTurnos ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -314,7 +419,7 @@ export default function LlamadorPage() {
                     .map((turno) => (
                     <div
                       key={turno.id}
-                      className="flex items-center justify-between p-4 bg-white border rounded-lg hover:shadow-md transition-shadow"
+                      className={`flex items-center justify-between p-4 border rounded-lg transition-shadow ${turnoActual ? 'bg-slate-100 opacity-60' : 'bg-white hover:shadow-md'}`}
                     >
                       <div>
                         <div className="text-2xl font-bold text-primary">
@@ -327,8 +432,10 @@ export default function LlamadorPage() {
                       <Button
                         size="lg"
                         onClick={() => handleLlamar(turno)}
+                        disabled={!!turnoActual || loading}
+                        title={turnoActual ? 'Finalice el turno actual primero' : 'Llamar turno'}
                       >
-                        <Bell className="w-4 h-4 mr-2" />
+                        <Bell className="w-4 w-4 mr-2" />
                         Llamar
                       </Button>
                     </div>

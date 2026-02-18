@@ -60,6 +60,7 @@ export async function PUT(request: NextRequest) {
       monitorTitulo,
       monitorSubtitulo,
       monitorPie,
+      monitorSonidoUrl,
       operadorTitulo,
       operadorInstrucciones,
       ticketLogoUrl,
@@ -108,6 +109,7 @@ export async function PUT(request: NextRequest) {
     if (monitorTitulo !== undefined) updateData.monitorTitulo = monitorTitulo
     if (monitorSubtitulo !== undefined) updateData.monitorSubtitulo = monitorSubtitulo
     if (monitorPie !== undefined) updateData.monitorPie = monitorPie
+    if (monitorSonidoUrl !== undefined) updateData.monitorSonidoUrl = monitorSonidoUrl
     if (operadorTitulo !== undefined) updateData.operadorTitulo = operadorTitulo
     if (operadorInstrucciones !== undefined) updateData.operadorInstrucciones = operadorInstrucciones
     if (ticketLogoUrl !== undefined) updateData.ticketLogoUrl = ticketLogoUrl
@@ -132,6 +134,7 @@ export async function PUT(request: NextRequest) {
       monitorTitulo: monitorTitulo || 'Monitor de Turnos',
       monitorSubtitulo: monitorSubtitulo || '',
       monitorPie: monitorPie || '',
+      monitorSonidoUrl: monitorSonidoUrl || null,
       operadorTitulo: operadorTitulo || 'Panel del Operador',
       operadorInstrucciones: operadorInstrucciones || 'Seleccione un sector para comenzar a atender',
       ticketLogoUrl: ticketLogoUrl || null,

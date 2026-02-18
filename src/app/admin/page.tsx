@@ -10,8 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Loader2, LogOut, Users, Building2, BarChart3, Plus, Edit2, Trash2, X, Settings } from 'lucide-react'
+import { Loader2, LogOut, Users, Building2, BarChart3, Plus, Edit2, Trash2, X, Settings, Square, Ticket } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import TicketEditor from '@/components/ticket-editor'
 
 interface Admin {
   id: string
@@ -43,6 +44,15 @@ interface Sector {
   color: string
   activo: boolean
   numeroTurno: number
+  horarios?: string | null
+}
+
+interface Box {
+  id: string
+  nombre: string
+  descripcion?: string
+  activo: boolean
+  operadores?: { id: string; nombre: string; username: string }[]
 }
 
 export default function AdminPage() {
@@ -59,14 +69,19 @@ export default function AdminPage() {
   const [loadingOperadores, setLoadingOperadores] = useState(false)
   const [editOperador, setEditOperador] = useState<Operador | null>(null)
   const [operadorDialogOpen, setOperadorDialogOpen] = useState(false)
-  const [operadorForm, setOperadorForm] = useState({ username: '', password: '', nombre: '', sectorIds: [] as string[], activo: true })
+  const [operadorForm, setOperadorForm] = useState({ username: '', password: '', nombre: '', sectorIds: [] as string[], boxIds: [] as string[], activo: true })
 
   // Estado para sectores
   const [sectores, setSectores] = useState<Sector[]>([])
   const [loadingSectores, setLoadingSectores] = useState(false)
   const [editSector, setEditSector] = useState<Sector | null>(null)
   const [sectorDialogOpen, setSectorDialogOpen] = useState(false)
-  const [sectorForm, setSectorForm] = useState({ nombre: '', color: '#10b981', activo: true })
+  const [sectorForm, setSectorForm] = useState({ 
+    nombre: '', 
+    color: '#10b981', 
+    activo: true, 
+    horarios: [] as { inicio: string; fin: string }[] 
+  })
 
   // Estado para estadísticas
   const [estadisticas, setEstadisticas] = useState<any>(null)
@@ -107,6 +122,7 @@ export default function AdminPage() {
     monitorTitulo: '',
     monitorSubtitulo: '',
     monitorPie: '',
+    monitorSonidoUrl: '',
     operadorTitulo: '',
     operadorInstrucciones: '',
     ticketLogoUrl: '',
@@ -124,6 +140,13 @@ export default function AdminPage() {
   const [editMonitor, setEditMonitor] = useState<any>(null)
   const [monitorDialogOpen, setMonitorDialogOpen] = useState(false)
   const [monitorForm, setMonitorForm] = useState({ nombre: '', descripcion: '', sectorIds: [] as string[], activo: true })
+
+  // Estado para boxes
+  const [boxes, setBoxes] = useState<Box[]>([])
+  const [loadingBoxes, setLoadingBoxes] = useState(false)
+  const [editBox, setEditBox] = useState<Box | null>(null)
+  const [boxDialogOpen, setBoxDialogOpen] = useState(false)
+  const [boxForm, setBoxForm] = useState({ nombre: '', descripcion: '', operadorIds: [] as string[], activo: true })
 
   // Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -160,7 +183,7 @@ export default function AdminPage() {
   }
 
   // Handle logo upload for totem
-  const handleUploadLogoTtem = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadLogoTotem = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -225,6 +248,80 @@ export default function AdminPage() {
     }
   }
 
+  // Handle sonido upload for monitor
+  const handleUploadSonidoMonitor = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validar tipo de archivo (solo audio)
+    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm']
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Error',
+        description: 'Solo se permiten archivos de audio: MP3, WAV, OGG, WebM',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Validar tamaño (máximo 500KB - los sonidos cortos son suficientes)
+    const maxSize = 500 * 1024
+    if (file.size > maxSize) {
+      toast({
+        title: 'Error',
+        description: 'El archivo es demasiado grande. Máximo permitido: 500KB. Use un sonido más corto.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Convertir a base64
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string
+      setConfigForm({
+        ...configForm,
+        monitorSonidoUrl: base64
+      })
+      toast({
+        title: '¡Éxito!',
+        description: 'Sonido cargado correctamente',
+      })
+    }
+    reader.onerror = () => {
+      toast({
+        title: 'Error',
+        description: 'No se pudo leer el archivo de audio',
+        variant: 'destructive',
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Reproducir sonido de prueba
+  const reproducirSonidoPrueba = () => {
+    if (!configForm.monitorSonidoUrl) {
+      toast({
+        title: 'Error',
+        description: 'No hay sonido configurado para reproducir',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      const audio = new Audio(configForm.monitorSonidoUrl)
+      audio.play()
+    } catch (error) {
+      console.error('Error al reproducir sonido:', error)
+      toast({
+        title: 'Error',
+        description: 'No se pudo reproducir el sonido',
+        variant: 'destructive',
+      })
+    }
+  }
+
   // Cargar operadores
   const cargarOperadores = async () => {
     setLoadingOperadores(true)
@@ -275,7 +372,7 @@ export default function AdminPage() {
         // Cerrar diálogo y limpiar formulario
         setOperadorDialogOpen(false)
         setEditOperador(null)
-        setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], activo: true })
+        setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], boxIds: [], activo: true })
         cargarOperadores()
       } else {
         toast({
@@ -295,12 +392,13 @@ export default function AdminPage() {
   }
 
   // Preparar operador para edición
-  const prepararEdicionOperador = (operador: Operador) => {
+  const prepararEdicionOperador = (operador: any) => {
     setOperadorForm({
       username: operador.username,
       password: '', // No mostramos la contraseña existente
       nombre: operador.nombre,
       sectorIds: operador.sectores?.map((os: OperadorSector) => os.sector.id) || [],
+      boxIds: operador.boxes?.map((ob: any) => ob.box.id) || [],
       activo: operador.activo
     })
     setEditOperador(operador)
@@ -355,11 +453,17 @@ export default function AdminPage() {
     const url = editSector ? `/api/admin/sectores/${cleanId}` : '/api/admin/sectores'
     const method = editSector ? 'PUT' : 'POST'
 
+    // Preparar datos a guardar
+    const dataToSend = {
+      ...sectorForm,
+      horarios: sectorForm.horarios.length > 0 ? JSON.stringify(sectorForm.horarios) : null
+    }
+
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sectorForm),
+        body: JSON.stringify(dataToSend),
       })
 
       const data = await response.json()
@@ -372,7 +476,7 @@ export default function AdminPage() {
         // Cerrar diálogo y limpiar formulario
         setSectorDialogOpen(false)
         setEditSector(null)
-        setSectorForm({ nombre: '', color: '#10b981', activo: true })
+        setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
         cargarSectores()
       } else {
         toast({
@@ -393,10 +497,19 @@ export default function AdminPage() {
 
   // Preparar sector para edición
   const prepararEdicionSector = (sector: Sector) => {
+    let horariosParsed: { inicio: string; fin: string }[] = []
+    if (sector.horarios) {
+      try {
+        horariosParsed = JSON.parse(sector.horarios)
+      } catch (e) {
+        console.error('Error al parsear horarios:', e)
+      }
+    }
     setSectorForm({
       nombre: sector.nombre,
       color: sector.color,
-      activo: sector.activo
+      activo: sector.activo,
+      horarios: horariosParsed
     })
     setEditSector(sector)
     setSectorDialogOpen(true)
@@ -461,6 +574,7 @@ export default function AdminPage() {
           monitorTitulo: data.monitorTitulo || '',
           monitorSubtitulo: data.monitorSubtitulo || '',
           monitorPie: data.monitorPie || '',
+          monitorSonidoUrl: data.monitorSonidoUrl || '',
           operadorTitulo: data.operadorTitulo || '',
           operadorInstrucciones: data.operadorInstrucciones || '',
           ticketLogoUrl: data.ticketLogoUrl || '',
@@ -561,6 +675,88 @@ export default function AdminPage() {
     }
   }
 
+  // Cargar boxes
+  const cargarBoxes = async () => {
+    setLoadingBoxes(true)
+    try {
+      const response = await fetch('/api/admin/boxes')
+      const data = await response.json()
+      if (response.ok) setBoxes(data)
+    } catch (error) {
+      console.error('Error al cargar boxes:', error)
+    } finally {
+      setLoadingBoxes(false)
+    }
+  }
+
+  // Guardar box (crear o editar)
+  const guardarBox = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const url = editBox ? `/api/admin/boxes/${editBox.id}` : '/api/admin/boxes'
+    const method = editBox ? 'PUT' : 'POST'
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(boxForm),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast({
+          title: '¡Éxito!',
+          description: editBox ? 'Box actualizado' : 'Box creado',
+        })
+        setBoxDialogOpen(false)
+        setEditBox(null)
+        setBoxForm({ nombre: '', descripcion: '', operadorIds: [], activo: true })
+        cargarBoxes()
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Error al guardar box',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      console.error('Error al guardar box:', error)
+    }
+  }
+
+  const prepararEdicionBox = (box: Box) => {
+    setBoxForm({
+      nombre: box.nombre,
+      descripcion: box.descripcion || '',
+      operadorIds: box.operadores?.map(op => op.id) || [],
+      activo: box.activo
+    })
+    setEditBox(box)
+    setBoxDialogOpen(true)
+  }
+
+  const eliminarBox = async (id: string) => {
+    if (!confirm('¿Está seguro de eliminar este box?')) return
+
+    try {
+      const response = await fetch(`/api/admin/boxes/${id}`, { method: 'DELETE' })
+      if (response.ok) {
+        toast({ title: '¡Éxito!', description: 'Box eliminado' })
+        cargarBoxes()
+      } else {
+        const data = await response.json()
+        toast({
+          title: 'Error',
+          description: data.error || 'Error al eliminar box',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      console.error('Error al eliminar box:', error)
+    }
+  }
+
   // Guardar configuración
   const guardarConfiguracion = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -597,6 +793,7 @@ export default function AdminPage() {
       cargarEstadisticas()
       cargarConfiguracion()
       cargarMonitores()
+      cargarBoxes()
     }
   }, [isAuthenticated])
 
@@ -681,7 +878,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="estadisticas">
               <BarChart3 className="w-4 h-4 mr-2" />
               Estadísticas
@@ -694,12 +891,16 @@ export default function AdminPage() {
               <Building2 className="w-4 h-4 mr-2" />
               Servicios
             </TabsTrigger>
+            <TabsTrigger value="boxes">
+              <Square className="w-4 h-4 mr-2" />
+              Boxes
+            </TabsTrigger>
             <TabsTrigger value="configuracion">
               <Settings className="w-4 h-4 mr-2" />
               Configuración
             </TabsTrigger>
             <TabsTrigger value="tickets">
-              <BarChart3 className="w-4 h-4 mr-2" />
+              <Ticket className="w-4 h-4 mr-2" />
               Tickets
             </TabsTrigger>
             <TabsTrigger value="monitores">
@@ -882,14 +1083,14 @@ export default function AdminPage() {
               <Dialog open={operadorDialogOpen} onOpenChange={(open) => {
                 if (!open) {
                   setEditOperador(null)
-                  setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], activo: true })
+                  setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], boxIds: [], activo: true })
                 }
                 setOperadorDialogOpen(open)
               }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => {
                     setEditOperador(null)
-                    setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], activo: true })
+                    setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], boxIds: [], activo: true })
                   }}>
                     <Plus className="w-4 h-4 mr-2" />
                     Nuevo Operador
@@ -955,6 +1156,40 @@ export default function AdminPage() {
                         ))}
                       </div>
                     </div>
+                    <div className="space-y-2">
+                      <Label>Boxes Asignados</Label>
+                      <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-2">
+                        {boxes.length === 0 ? (
+                          <p className="text-sm text-slate-500">No hay boxes disponibles</p>
+                        ) : (
+                          boxes.map((box) => (
+                            <div key={box.id} className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id={`op-box-${box.id}`}
+                                checked={operadorForm.boxIds.includes(box.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setOperadorForm({
+                                      ...operadorForm,
+                                      boxIds: [...operadorForm.boxIds, box.id]
+                                    })
+                                  } else {
+                                    setOperadorForm({
+                                      ...operadorForm,
+                                      boxIds: operadorForm.boxIds.filter(id => id !== box.id)
+                                    })
+                                  }
+                                }}
+                              />
+                              <label htmlFor={`op-box-${box.id}`} className="text-sm cursor-pointer">
+                                {box.nombre}
+                              </label>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Switch
                         checked={operadorForm.activo}
@@ -1010,6 +1245,18 @@ export default function AdminPage() {
                             ))}
                           </div>
                         )}
+                        {(operador as any).boxes && (operador as any).boxes.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {(operador as any).boxes.map((ob: any) => (
+                              <span
+                                key={ob.box.id}
+                                className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-700"
+                              >
+                                {ob.box.nombre}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1025,20 +1272,20 @@ export default function AdminPage() {
               <Dialog open={sectorDialogOpen} onOpenChange={(open) => {
                 if (!open) {
                   setEditSector(null)
-                  setSectorForm({ nombre: '', color: '#10b981', activo: true })
+                  setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
                 }
                 setSectorDialogOpen(open)
               }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => {
                     setEditSector(null)
-                    setSectorForm({ nombre: '', color: '#10b981', activo: true })
+                    setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
                   }}>
                     <Plus className="w-4 h-4 mr-2" />
                     Nuevo Sector
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>{editSector ? 'Editar Sector' : 'Nuevo Sector'}</DialogTitle>
                   </DialogHeader>
@@ -1075,7 +1322,84 @@ export default function AdminPage() {
                       />
                       <Label>Activo</Label>
                     </div>
-                    <div className="flex gap-2 justify-end">
+                    
+                    {/* Sección de Horarios */}
+                    <div className="border-t pt-4 mt-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <div>
+                          <h4 className="font-semibold">Horarios de Atención</h4>
+                          <p className="text-sm text-slate-500">Si no se configuran horarios, el sector estará siempre activo</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSectorForm({
+                              ...sectorForm,
+                              horarios: [...sectorForm.horarios, { inicio: '08:00', fin: '12:00' }]
+                            })
+                          }}
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Agregar Horario
+                        </Button>
+                      </div>
+                      
+                      {sectorForm.horarios.length > 0 ? (
+                        <div className="space-y-2">
+                          {sectorForm.horarios.map((horario, index) => (
+                            <div key={index} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg">
+                              <div className="flex items-center gap-2 flex-1">
+                                <Label className="text-sm">Desde:</Label>
+                                <Input
+                                  type="time"
+                                  value={horario.inicio}
+                                  onChange={(e) => {
+                                    const nuevosHorarios = [...sectorForm.horarios]
+                                    nuevosHorarios[index] = { ...nuevosHorarios[index], inicio: e.target.value }
+                                    setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
+                                  }}
+                                  className="w-32"
+                                />
+                                <Label className="text-sm">Hasta:</Label>
+                                <Input
+                                  type="time"
+                                  value={horario.fin}
+                                  onChange={(e) => {
+                                    const nuevosHorarios = [...sectorForm.horarios]
+                                    nuevosHorarios[index] = { ...nuevosHorarios[index], fin: e.target.value }
+                                    setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  const nuevosHorarios = sectorForm.horarios.filter((_, i) => i !== index)
+                                  setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-slate-500 bg-slate-50 rounded-lg">
+                          Sin horarios configurados - Sector siempre activo
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2 justify-end pt-4">
+                      <Button type="button" variant="outline" onClick={() => setSectorDialogOpen(false)}>
+                        Cancelar
+                      </Button>
                       <Button type="submit">{editSector ? 'Actualizar' : 'Crear'}</Button>
                     </div>
                   </form>
@@ -1116,6 +1440,106 @@ export default function AdminPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Tab Boxes */}
+          <TabsContent value="boxes" className="mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Gestión de Boxes</h2>
+              <Dialog open={boxDialogOpen} onOpenChange={(open) => {
+                if (!open) {
+                  setEditBox(null)
+                  setBoxForm({ nombre: '', descripcion: '', operadorIds: [], activo: true })
+                }
+                setBoxDialogOpen(open)
+              }}>
+                <DialogTrigger asChild>
+                  <Button onClick={() => {
+                    setEditBox(null)
+                    setBoxForm({ nombre: '', descripcion: '', operadorIds: [], activo: true })
+                  }}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Nuevo Box
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{editBox ? 'Editar Box' : 'Nuevo Box'}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={guardarBox} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Nombre del Box</Label>
+                      <Input
+                        value={boxForm.nombre}
+                        onChange={(e) => setBoxForm({ ...boxForm, nombre: e.target.value })}
+                        placeholder="Ej: Box 1, Ventanilla A"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Descripción (opcional)</Label>
+                      <Input
+                        value={boxForm.descripcion}
+                        onChange={(e) => setBoxForm({ ...boxForm, descripcion: e.target.value })}
+                        placeholder="Ej: Atención general"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={boxForm.activo}
+                        onCheckedChange={(checked) => setBoxForm({ ...boxForm, activo: checked })}
+                      />
+                      <Label>Activo</Label>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button type="submit">{editBox ? 'Actualizar' : 'Crear'}</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {loadingBoxes ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-12 h-12 animate-spin text-primary" />
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <div className="max-h-96 overflow-y-auto">
+                    {boxes.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500">
+                        <Square className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>No hay boxes creados</p>
+                        <p className="text-sm mt-2">Cree un box para comenzar</p>
+                      </div>
+                    ) : (
+                      boxes.map((box) => (
+                        <div key={box.id} className="flex items-center justify-between p-4 border-b last:border-b-0">
+                          <div>
+                            <div className="font-semibold">{box.nombre}</div>
+                            {box.descripcion && (
+                              <div className="text-sm text-slate-600">{box.descripcion}</div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded text-xs ${box.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {box.activo ? 'Activo' : 'Inactivo'}
+                            </span>
+                            <Button size="icon" variant="ghost" onClick={() => prepararEdicionBox(box)}>
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => eliminarBox(box.id)}>
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1222,7 +1646,7 @@ export default function AdminPage() {
                         id="totemLogoUrl"
                         type="file"
                         accept="image/*"
-                        onChange={handleUploadLogoTtem}
+                        onChange={handleUploadLogoTotem}
                         className="file:mr-2"
                       />
                       <Input
@@ -1305,6 +1729,48 @@ export default function AdminPage() {
                         className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="monitorSonidoUrl">Sonido de Llamada</Label>
+                      <Input
+                        id="monitorSonidoUrl"
+                        type="file"
+                        accept="audio/*"
+                        onChange={handleUploadSonidoMonitor}
+                        className="file:mr-2"
+                      />
+                      <p className="text-sm text-slate-500">
+                        Suba un archivo de audio para cuando se llama un turno. Formatos: MP3, WAV, OGG (máx 500KB)
+                      </p>
+                      {configForm.monitorSonidoUrl && (
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-green-700">✓ Sonido configurado</p>
+                            <p className="text-xs text-slate-500">
+                              {configForm.monitorSonidoUrl.startsWith('data:') 
+                                ? 'Archivo cargado en la base de datos' 
+                                : 'URL externa'}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={reproducirSonidoPrueba}
+                          >
+                            ▶ Probar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => setConfigForm({ ...configForm, monitorSonidoUrl: '' })}
+                          >
+                            Eliminar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Textos del Operador */}
                     <div className="border-t pt-6 mt-6">
@@ -1349,98 +1815,10 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
-          {/* Tab Tickets */}
+          {/* Tab Tickets - Editor de Tickets */}
           <TabsContent value="tickets" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración de Tickets</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={guardarConfiguracion} className="space-y-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Personalización del Ticket</h3>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketLogoUrl">URL del Logo Personalizado</Label>
-                      <Input
-                        id="ticketLogoUrl"
-                        value={configForm.ticketLogoUrl}
-                        onChange={(e) => setConfigForm({ ...configForm, ticketLogoUrl: e.target.value })}
-                        placeholder="https://ejemplo.com/logo.png"
-                      />
-                      <p className="text-sm text-slate-500">Ingrese la URL completa de la imagen del logo</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketEncabezado">Encabezado del Ticket</Label>
-                      <Input
-                        id="ticketEncabezado"
-                        value={configForm.ticketEncabezado}
-                        onChange={(e) => setConfigForm({ ...configForm, ticketEncabezado: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketPie">Pie de Página del Ticket</Label>
-                      <Input
-                        id="ticketPie"
-                        value={configForm.ticketPie}
-                        onChange={(e) => setConfigForm({ ...configForm, ticketPie: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketColorPrimario">Color Primario</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="ticketColorPrimario"
-                          type="color"
-                          value={configForm.ticketColorPrimario}
-                          onChange={(e) => setConfigForm({ ...configForm, ticketColorPrimario: e.target.value })}
-                          className="w-20 h-10"
-                        />
-                        <Input
-                          value={configForm.ticketColorPrimario}
-                          onChange={(e) => setConfigForm({ ...configForm, ticketColorPrimario: e.target.value })}
-                          placeholder="#1e40af"
-                          className="flex-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Elementos a Mostrar</h3>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="ticketMostrarFecha"
-                        checked={configForm.ticketMostrarFecha}
-                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarFecha: checked })}
-                      />
-                      <Label htmlFor="ticketMostrarFecha">Mostrar Fecha</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="ticketMostrarHora"
-                        checked={configForm.ticketMostrarHora}
-                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarHora: checked })}
-                      />
-                      <Label htmlFor="ticketMostrarHora">Mostrar Hora</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="ticketMostrarOperador"
-                        checked={configForm.ticketMostrarOperador}
-                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarOperador: checked })}
-                      />
-                      <Label htmlFor="ticketMostrarOperador">Mostrar Operador</Label>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 justify-end">
-                    <Button type="submit">Guardar Configuración</Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
+            <h2 className="text-2xl font-bold mb-4">Editor de Tickets</h2>
+            <TicketEditor />
           </TabsContent>
 
           {/* Tab Monitores */}

@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
             include: {
               sector: true
             }
+          },
+          boxes: {
+            include: {
+              box: true
+            }
           }
         }
       })
@@ -71,7 +76,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ...usuarioSinPassword,
       esAdmin,
-      sectores: usuarioActivo.sectores
+      sectores: usuarioActivo.sectores,
+      boxes: (usuarioActivo as any).boxes || []
     })
   } catch (error) {
     console.error('Error en login:', error)

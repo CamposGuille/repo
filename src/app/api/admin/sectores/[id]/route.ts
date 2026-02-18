@@ -8,7 +8,7 @@ export async function PUT(
   try {
     const paramsId = (await params).id
     const body = await request.json()
-    const { nombre, color, activo } = body
+    const { nombre, color, activo, horarios } = body
 
     const item = await db.sector.findUnique({ where: { id: paramsId } })
 
@@ -30,6 +30,11 @@ export async function PUT(
 
     if (nombre) {
       updateData.nombre = nombre
+    }
+
+    // Manejar horarios (puede ser null para borrarlos)
+    if (horarios !== undefined) {
+      updateData.horarios = horarios
     }
 
     const updated = await db.sector.update({

@@ -60,19 +60,20 @@ model Configuracion {
   monitorTitulo          String   @default("Monitor de Turnos")
   monitorSubtitulo       String   @default("Espere en la sala a ser llamado")
   monitorPie            String   @default("Por favor, preste atención a los anuncios en voz alta")
+  monitorSonidoUrl      String?  // Sonido de llamada (base64 o URL)
 
   // Textos del Operador
   operadorTitulo         String   @default("Panel del Operador")
   operadorInstrucciones  String   @default("Seleccione un sector para comenzar a atender")
 
-  // Configuración de Tickets
-  ticketLogoUrl         String?  // URL del logo personalizado para el ticket
-  ticketEncabezado      String   @default("TICKET DE TURNO") // Encabezado del ticket
-  ticketPie             String   @default("Gracias por su espera") // Pie de página del ticket
-  ticketColorPrimario   String   @default("#1e40af") // Color primario para el ticket
-  ticketMostrarFecha    Boolean  @default(true) // Mostrar fecha en el ticket
-  ticketMostrarHora     Boolean  @default(true) // Mostrar hora en el ticket
-  ticketMostrarOperador Boolean  @default(true) // Mostrar operador en el ticket
+  // Configuración de Tickets (legacy)
+  ticketLogoUrl          String?
+  ticketEncabezado       String   @default("TICKET DE TURNO")
+  ticketPie              String   @default("Gracias por su espera")
+  ticketColorPrimario    String   @default("#1e40af")
+  ticketMostrarFecha     Boolean  @default(true)
+  ticketMostrarHora      Boolean  @default(true)
+  ticketMostrarOperador  Boolean  @default(true)
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -104,6 +105,7 @@ model Sector {
   color       String   // Color para identificar visualmente el sector
   activo      Boolean  @default(true)
   numeroTurno Int      @default(1) // Contador para números de turno
+  horarios    String?  // JSON con rangos horarios: [{"inicio": "08:00", "fin": "12:00"}, {"inicio": "16:00", "fin": "20:00"}]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -132,7 +134,32 @@ model Operador {
   updatedAt DateTime @updatedAt
 
   sectores  OperadorSector[]
+  boxes     OperadorBox[]
   turnosLlamados Turno[] @relation("OperadorLlamadas")
+}
+
+// Modelo para Boxes (ventanillas)
+model Box {
+  id          String   @id @default(cuid())
+  nombre      String   @unique // Ej: "Box 1", "Ventanilla A"
+  descripcion String?  // Descripción opcional
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  operadores  OperadorBox[]
+  turnos      Turno[]
+}
+
+// Relación Operador-Box (muchos a muchos)
+model OperadorBox {
+  id         String   @id @default(cuid())
+  operadorId String
+  boxId      String
+  operador   Operador @relation(fields: [operadorId], references: [id])
+  box        Box      @relation(fields: [boxId], references: [id])
+
+  @@unique([operadorId, boxId])
 }
 
 model Turno {
@@ -140,6 +167,7 @@ model Turno {
   numero         String    // Ej: "A-001", "B-045"
   dni            String    // DNI del cliente
   sectorId       String    // Sector al que pertenece el turno
+  boxId          String?   // Box desde donde fue llamado
   estado         String    @default("esperando") // "esperando", "llamado", "atendiendo", "finalizado", "ausente"
   operadorId     String?   // Operador que llamó al turno
   fechaCreacion  DateTime  @default(now())
@@ -150,5 +178,18 @@ model Turno {
   updatedAt      DateTime  @updatedAt
 
   sector         Sector    @relation(fields: [sectorId], references: [id])
+  box            Box?      @relation(fields: [boxId], references: [id])
   operador       Operador? @relation("OperadorLlamadas", fields: [operadorId], references: [id])
+}
+
+// Configuración de Tickets (plantillas)
+model TicketConfig {
+  id          String   @id @default(cuid())
+  nombre      String   @unique // Nombre de la configuración (ej: "Default", "Estrecho", "Sin logo")
+  descripcion String?  // Descripción opcional
+  esDefault   Boolean  @default(false) // Si es la configuración por defecto
+  activo      Boolean  @default(true)
+  config      String   // JSON con toda la configuración del ticket
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

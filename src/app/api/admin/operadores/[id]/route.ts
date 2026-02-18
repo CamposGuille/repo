@@ -9,12 +9,13 @@ export async function PUT(
   try {
     const paramsId = (await params).id
     const body = await request.json()
-    const { username, password, nombre, sectorIds, activo } = body
+    const { username, password, nombre, sectorIds, boxIds, activo } = body
 
     const operadorExistente = await db.operador.findUnique({
       where: { id: paramsId },
       include: {
-        sectores: true
+        sectores: true,
+        boxes: true
       }
     })
 
@@ -35,6 +36,16 @@ export async function PUT(
         const sector = await db.sector.findUnique({ where: { id: sectorId } })
         if (!sector) {
           return NextResponse.json({ error: 'Uno o más sectores no encontrados' }, { status: 404 })
+        }
+      }
+    }
+
+    // Si se proporcionan boxIds, validar que existan
+    if (boxIds && boxIds.length > 0) {
+      for (const boxId of boxIds) {
+        const box = await db.box.findUnique({ where: { id: boxId } })
+        if (!box) {
+          return NextResponse.json({ error: 'Uno o más boxes no encontrados' }, { status: 404 })
         }
       }
     }
@@ -71,6 +82,25 @@ export async function PUT(
       }
     }
 
+    // Manejar la actualización de boxes
+    if (boxIds !== undefined) {
+      // Primero eliminar todas las relaciones existentes
+      await db.operadorBox.deleteMany({
+        where: {
+          operadorId: paramsId
+        }
+      })
+
+      // Si hay nuevos boxes, crear las relaciones
+      if (boxIds.length > 0) {
+        updateData.boxes = {
+          create: boxIds.map((boxId: string) => ({
+            box: { connect: { id: boxId } }
+          }))
+        }
+      }
+    }
+
     const operador = await db.operador.update({
       where: { id: paramsId },
       data: updateData,
@@ -78,6 +108,11 @@ export async function PUT(
         sectores: {
           include: {
             sector: true
+          }
+        },
+        boxes: {
+          include: {
+            box: true
           }
         }
       }
@@ -102,6 +137,10 @@ export async function DELETE(
     if (!operador) {
       return NextResponse.json({ error: 'Operador no encontrado' }, { status: 404 })
     }
+
+    // Eliminar relaciones primero
+    await db.operadorSector.deleteMany({ where: { operadorId: paramsId } })
+    await db.operadorBox.deleteMany({ where: { operadorId: paramsId } })
 
     await db.operador.delete({ where: { id: paramsId } })
     return NextResponse.json({ message: 'Operador eliminado' })
