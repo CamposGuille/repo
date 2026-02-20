@@ -66,7 +66,7 @@ model Configuracion {
   operadorTitulo         String   @default("Panel del Operador")
   operadorInstrucciones  String   @default("Seleccione un sector para comenzar a atender")
 
-  // Configuración de Tickets (legacy)
+  // Configuración del Ticket
   ticketLogoUrl          String?
   ticketEncabezado       String   @default("TICKET DE TURNO")
   ticketPie              String   @default("Gracias por su espera")
@@ -81,6 +81,7 @@ model Configuracion {
 
 model Monitor {
   id          String   @id @default(cuid())
+  numero      Int      @unique @default(1)
   nombre      String   @unique
   descripcion String?
   activo      Boolean  @default(true)
@@ -105,7 +106,6 @@ model Sector {
   color       String   // Color para identificar visualmente el sector
   activo      Boolean  @default(true)
   numeroTurno Int      @default(1) // Contador para números de turno
-  horarios    String?  // JSON con rangos horarios: [{"inicio": "08:00", "fin": "12:00"}, {"inicio": "16:00", "fin": "20:00"}]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

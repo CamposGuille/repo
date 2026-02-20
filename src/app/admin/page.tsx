@@ -44,7 +44,6 @@ interface Sector {
   color: string
   activo: boolean
   numeroTurno: number
-  horarios?: string | null
 }
 
 interface Box {
@@ -76,12 +75,7 @@ export default function AdminPage() {
   const [loadingSectores, setLoadingSectores] = useState(false)
   const [editSector, setEditSector] = useState<Sector | null>(null)
   const [sectorDialogOpen, setSectorDialogOpen] = useState(false)
-  const [sectorForm, setSectorForm] = useState({ 
-    nombre: '', 
-    color: '#10b981', 
-    activo: true, 
-    horarios: [] as { inicio: string; fin: string }[] 
-  })
+  const [sectorForm, setSectorForm] = useState({ nombre: '', color: '#10b981', activo: true })
 
   // Estado para estadísticas
   const [estadisticas, setEstadisticas] = useState<any>(null)
@@ -264,12 +258,12 @@ export default function AdminPage() {
       return
     }
 
-    // Validar tamaño (máximo 500KB - los sonidos cortos son suficientes)
-    const maxSize = 500 * 1024
+    // Validar tamaño (máximo 1MB)
+    const maxSize = 1 * 1024 * 1024
     if (file.size > maxSize) {
       toast({
         title: 'Error',
-        description: 'El archivo es demasiado grande. Máximo permitido: 500KB. Use un sonido más corto.',
+        description: 'El archivo es demasiado grande. Máximo permitido: 1MB',
         variant: 'destructive',
       })
       return
@@ -453,17 +447,11 @@ export default function AdminPage() {
     const url = editSector ? `/api/admin/sectores/${cleanId}` : '/api/admin/sectores'
     const method = editSector ? 'PUT' : 'POST'
 
-    // Preparar datos a guardar
-    const dataToSend = {
-      ...sectorForm,
-      horarios: sectorForm.horarios.length > 0 ? JSON.stringify(sectorForm.horarios) : null
-    }
-
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dataToSend),
+        body: JSON.stringify(sectorForm),
       })
 
       const data = await response.json()
@@ -476,7 +464,7 @@ export default function AdminPage() {
         // Cerrar diálogo y limpiar formulario
         setSectorDialogOpen(false)
         setEditSector(null)
-        setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
+        setSectorForm({ nombre: '', color: '#10b981', activo: true })
         cargarSectores()
       } else {
         toast({
@@ -497,19 +485,10 @@ export default function AdminPage() {
 
   // Preparar sector para edición
   const prepararEdicionSector = (sector: Sector) => {
-    let horariosParsed: { inicio: string; fin: string }[] = []
-    if (sector.horarios) {
-      try {
-        horariosParsed = JSON.parse(sector.horarios)
-      } catch (e) {
-        console.error('Error al parsear horarios:', e)
-      }
-    }
     setSectorForm({
       nombre: sector.nombre,
       color: sector.color,
-      activo: sector.activo,
-      horarios: horariosParsed
+      activo: sector.activo
     })
     setEditSector(sector)
     setSectorDialogOpen(true)
@@ -1272,20 +1251,20 @@ export default function AdminPage() {
               <Dialog open={sectorDialogOpen} onOpenChange={(open) => {
                 if (!open) {
                   setEditSector(null)
-                  setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
+                  setSectorForm({ nombre: '', color: '#10b981', activo: true })
                 }
                 setSectorDialogOpen(open)
               }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => {
                     setEditSector(null)
-                    setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
+                    setSectorForm({ nombre: '', color: '#10b981', activo: true })
                   }}>
                     <Plus className="w-4 h-4 mr-2" />
                     Nuevo Sector
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent>
                   <DialogHeader>
                     <DialogTitle>{editSector ? 'Editar Sector' : 'Nuevo Sector'}</DialogTitle>
                   </DialogHeader>
@@ -1322,84 +1301,7 @@ export default function AdminPage() {
                       />
                       <Label>Activo</Label>
                     </div>
-                    
-                    {/* Sección de Horarios */}
-                    <div className="border-t pt-4 mt-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <div>
-                          <h4 className="font-semibold">Horarios de Atención</h4>
-                          <p className="text-sm text-slate-500">Si no se configuran horarios, el sector estará siempre activo</p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSectorForm({
-                              ...sectorForm,
-                              horarios: [...sectorForm.horarios, { inicio: '08:00', fin: '12:00' }]
-                            })
-                          }}
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Agregar Horario
-                        </Button>
-                      </div>
-                      
-                      {sectorForm.horarios.length > 0 ? (
-                        <div className="space-y-2">
-                          {sectorForm.horarios.map((horario, index) => (
-                            <div key={index} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg">
-                              <div className="flex items-center gap-2 flex-1">
-                                <Label className="text-sm">Desde:</Label>
-                                <Input
-                                  type="time"
-                                  value={horario.inicio}
-                                  onChange={(e) => {
-                                    const nuevosHorarios = [...sectorForm.horarios]
-                                    nuevosHorarios[index] = { ...nuevosHorarios[index], inicio: e.target.value }
-                                    setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
-                                  }}
-                                  className="w-32"
-                                />
-                                <Label className="text-sm">Hasta:</Label>
-                                <Input
-                                  type="time"
-                                  value={horario.fin}
-                                  onChange={(e) => {
-                                    const nuevosHorarios = [...sectorForm.horarios]
-                                    nuevosHorarios[index] = { ...nuevosHorarios[index], fin: e.target.value }
-                                    setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
-                                  }}
-                                  className="w-32"
-                                />
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => {
-                                  const nuevosHorarios = sectorForm.horarios.filter((_, i) => i !== index)
-                                  setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
-                                }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-slate-500 bg-slate-50 rounded-lg">
-                          Sin horarios configurados - Sector siempre activo
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex gap-2 justify-end pt-4">
-                      <Button type="button" variant="outline" onClick={() => setSectorDialogOpen(false)}>
-                        Cancelar
-                      </Button>
+                    <div className="flex gap-2 justify-end">
                       <Button type="submit">{editSector ? 'Actualizar' : 'Crear'}</Button>
                     </div>
                   </form>
@@ -1739,7 +1641,7 @@ export default function AdminPage() {
                         className="file:mr-2"
                       />
                       <p className="text-sm text-slate-500">
-                        Suba un archivo de audio para cuando se llama un turno. Formatos: MP3, WAV, OGG (máx 500KB)
+                        Suba un archivo de audio para cuando se llama un turno. Formatos: MP3, WAV, OGG (máx 1MB)
                       </p>
                       {configForm.monitorSonidoUrl && (
                         <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
@@ -1815,7 +1717,101 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
-          {/* Tab Tickets - Editor de Tickets */}
+          {/* Tab Tickets */}
+          <TabsContent value="tickets" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuración de Tickets</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={guardarConfiguracion} className="space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Personalización del Ticket</h3>
+                    <div className="space-y-2">
+                      <Label htmlFor="ticketLogoUrl">URL del Logo Personalizado</Label>
+                      <Input
+                        id="ticketLogoUrl"
+                        value={configForm.ticketLogoUrl}
+                        onChange={(e) => setConfigForm({ ...configForm, ticketLogoUrl: e.target.value })}
+                        placeholder="https://ejemplo.com/logo.png"
+                      />
+                      <p className="text-sm text-slate-500">Ingrese la URL completa de la imagen del logo</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ticketEncabezado">Encabezado del Ticket</Label>
+                      <Input
+                        id="ticketEncabezado"
+                        value={configForm.ticketEncabezado}
+                        onChange={(e) => setConfigForm({ ...configForm, ticketEncabezado: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ticketPie">Pie de Página del Ticket</Label>
+                      <Input
+                        id="ticketPie"
+                        value={configForm.ticketPie}
+                        onChange={(e) => setConfigForm({ ...configForm, ticketPie: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ticketColorPrimario">Color Primario</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="ticketColorPrimario"
+                          type="color"
+                          value={configForm.ticketColorPrimario}
+                          onChange={(e) => setConfigForm({ ...configForm, ticketColorPrimario: e.target.value })}
+                          className="w-20 h-10"
+                        />
+                        <Input
+                          value={configForm.ticketColorPrimario}
+                          onChange={(e) => setConfigForm({ ...configForm, ticketColorPrimario: e.target.value })}
+                          placeholder="#1e40af"
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Elementos a Mostrar</h3>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="ticketMostrarFecha"
+                        checked={configForm.ticketMostrarFecha}
+                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarFecha: checked })}
+                      />
+                      <Label htmlFor="ticketMostrarFecha">Mostrar Fecha</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="ticketMostrarHora"
+                        checked={configForm.ticketMostrarHora}
+                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarHora: checked })}
+                      />
+                      <Label htmlFor="ticketMostrarHora">Mostrar Hora</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="ticketMostrarOperador"
+                        checked={configForm.ticketMostrarOperador}
+                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarOperador: checked })}
+                      />
+                      <Label htmlFor="ticketMostrarOperador">Mostrar Operador</Label>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button type="submit">Guardar Configuración</Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab Tickets */}
           <TabsContent value="tickets" className="mt-6">
             <h2 className="text-2xl font-bold mb-4">Editor de Tickets</h2>
             <TicketEditor />

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, LogOut, Users, Bell, CheckCircle2, Clock, XCircle, Square } from 'lucide-react'
+import { Loader2, LogOut, Users, Bell, CheckCircle2, Clock, XCircle, Square, Volume2 } from 'lucide-react'
 import { AlertCircle } from 'lucide-react'
 
 interface OperadorSector {
@@ -175,6 +175,29 @@ export default function LlamadorPage() {
       setError('Error al llamar turno')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Volver a llamar al turno actual
+  const handleRellamar = async () => {
+    if (!turnoActual) return
+
+    try {
+      const response = await fetch('/api/turnos/rellamar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          turnoId: turnoActual.id
+        }),
+      })
+
+      if (response.ok) {
+        // El llamado fue enviado al monitor
+      }
+    } catch (error) {
+      console.error('Error al re-llamar turno:', error)
     }
   }
 
@@ -466,9 +489,15 @@ export default function LlamadorPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <p className="text-sm text-slate-600 font-semibold mb-3">
-                      ¿Qué desea hacer?
-                    </p>
+                    {/* Botón de Volver a Llamar */}
+                    <Button
+                      size="lg"
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                      onClick={handleRellamar}
+                    >
+                      <Volume2 className="w-4 h-4 mr-2" />
+                      Volver a Llamar
+                    </Button>
                     <div className="grid grid-cols-2 gap-3">
                       <Button
                         size="lg"
@@ -491,8 +520,8 @@ export default function LlamadorPage() {
                     </div>
                     <Button
                       size="lg"
-                      variant="outline"
-                      className="w-full"
+                      className="w-full text-slate-900"
+                      style={{ backgroundColor: '#97f7aa' }}
                       onClick={() => handleActualizarEstado('finalizado')}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" />
