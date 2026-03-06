@@ -9,7 +9,7 @@ export async function PUT(
   try {
     const paramsId = (await params).id
     const body = await request.json()
-    const { username, password, nombre, sectorIds, boxIds, activo } = body
+    const { username, password, nombre, sectores, boxIds, activo } = body
 
     const operadorExistente = await db.operador.findUnique({
       where: { id: paramsId },
@@ -30,10 +30,10 @@ export async function PUT(
       }
     }
 
-    // Si se proporcionan sectorIds, validar que existan
-    if (sectorIds && sectorIds.length > 0) {
-      for (const sectorId of sectorIds) {
-        const sector = await db.sector.findUnique({ where: { id: sectorId } })
+    // Si se proporcionan sectores, validar que existan
+    if (sectores && sectores.length > 0) {
+      for (const s of sectores) {
+        const sector = await db.sector.findUnique({ where: { id: s.sectorId || s.id } })
         if (!sector) {
           return NextResponse.json({ error: 'Uno o más sectores no encontrados' }, { status: 404 })
         }
@@ -64,7 +64,7 @@ export async function PUT(
     }
 
     // Manejar la actualización de sectores
-    if (sectorIds !== undefined) {
+    if (sectores !== undefined) {
       // Primero eliminar todas las relaciones existentes
       await db.operadorSector.deleteMany({
         where: {
@@ -73,10 +73,11 @@ export async function PUT(
       })
 
       // Si hay nuevos sectores, crear las relaciones
-      if (sectorIds.length > 0) {
+      if (sectores.length > 0) {
         updateData.sectores = {
-          create: sectorIds.map((sectorId: string) => ({
-            sector: { connect: { id: sectorId } }
+          create: sectores.map((s: any) => ({
+            sector: { connect: { id: s.sectorId || s.id } },
+            puedeControlarTurnos: s.puedeControlarTurnos || false
           }))
         }
       }

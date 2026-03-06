@@ -29,7 +29,14 @@ export async function POST(request: NextRequest) {
         include: {
           sectores: {
             include: {
-              sector: true
+              sector: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  color: true,
+                  cerradoManualmente: true
+                }
+              }
             }
           },
           boxes: {

@@ -7,15 +7,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, LogOut, Users, Bell, CheckCircle2, Clock, XCircle, Square, Volume2 } from 'lucide-react'
+import { Loader2, LogOut, Users, Bell, CheckCircle2, Clock, XCircle, Square, Volume2, Lock, Unlock } from 'lucide-react'
 import { AlertCircle } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 
 interface OperadorSector {
   id: string
+  puedeControlarTurnos: boolean
   sector: {
     id: string
     nombre: string
     color: string
+    cerradoManualmente?: boolean
   }
 }
 
@@ -54,6 +57,8 @@ export default function LlamadorPage() {
   const [turnoActual, setTurnoActual] = useState<Turno | null>(null)
   const [loadingTurnos, setLoadingTurnos] = useState(false)
   const [selectedBoxId, setSelectedBoxId] = useState<string>('')
+  const [loadingSectorEstado, setLoadingSectorEstado] = useState<string | null>(null)
+  const { toast } = useToast()
 
   // Manejo de login
   const handleLogin = async (e: React.FormEvent) => {
@@ -178,7 +183,7 @@ export default function LlamadorPage() {
     }
   }
 
-  // Volver a llamar al turno actual
+  // Volver a llamar el turno actual
   const handleRellamar = async () => {
     if (!turnoActual) return
 
@@ -194,7 +199,7 @@ export default function LlamadorPage() {
       })
 
       if (response.ok) {
-        // El llamado fue enviado al monitor
+        // Opcional: mostrar confirmación
       }
     } catch (error) {
       console.error('Error al re-llamar turno:', error)
@@ -245,6 +250,64 @@ export default function LlamadorPage() {
       console.error('Error al cargar turno activo:', error)
     }
   }
+
+  // Cambiar estado del sector (abrir/cerrar turnos)
+  const toggleSectorEstado = async (sectorId: string, cerradoManualmente: boolean) => {
+    if (!operador) return
+
+    setLoadingSectorEstado(sectorId)
+    try {
+      const response = await fetch('/api/sectores/estado', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectorId,
+          operadorId: operador.id,
+          cerradoManualmente
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Actualizar el estado local del operador
+        setOperador(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            sectores: prev.sectores.map(os => 
+              os.sector.id === sectorId 
+                ? { ...os, sector: { ...os.sector, cerradoManualmente } }
+                : os
+            )
+          }
+        })
+
+        toast({
+          title: cerradoManualmente ? 'Sector cerrado' : 'Sector abierto',
+          description: `Los turnos para este sector han sido ${cerradoManualmente ? 'deshabilitados' : 'habilitados'}`,
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'No se pudo cambiar el estado del sector',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Error al cambiar estado del sector:', error)
+      toast({
+        title: 'Error',
+        description: 'Error de conexión',
+        variant: 'destructive'
+      })
+    } finally {
+      setLoadingSectorEstado(null)
+    }
+  }
+
+  // Obtener sectores que el operador puede controlar
+  const sectoresControlables = operador?.sectores.filter(os => os.puedeControlarTurnos) || []
 
   // Cargar turnos cuando se autentica
   useEffect(() => {
@@ -333,7 +396,7 @@ export default function LlamadorPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
               Panel de Operador
@@ -366,34 +429,77 @@ export default function LlamadorPage() {
           </Button>
         </header>
 
-        {/* Selector de Box */}
-        {operador?.boxes && operador.boxes.length > 0 && (
-          <Card className="mb-6 border-2 border-primary/20 bg-primary/5">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <Square className="w-6 h-6 text-primary" />
-                <Label className="text-lg font-semibold">Seleccionar Box:</Label>
-                <Select value={selectedBoxId} onValueChange={setSelectedBoxId}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Seleccione un box" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operador.boxes.map((ob) => (
-                      <SelectItem key={ob.box.id} value={ob.box.id}>
-                        {ob.box.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedBoxId && (
-                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                    Activo: {operador.boxes.find(ob => ob.box.id === selectedBoxId)?.box.nombre}
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Fila de controles: Box y Estado de Sectores lado a lado */}
+        {(operador?.boxes && operador.boxes.length > 0) || sectoresControlables.length > 0 ? (
+          <div className="flex flex-col md:flex-row gap-3 mb-6">
+            {/* Selector de Box - Mitad izquierda */}
+            {operador?.boxes && operador.boxes.length > 0 && (
+              <Card className="border border-slate-200 bg-white flex-1">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-3">
+                    <Square className="w-4 h-4 text-slate-500 shrink-0" />
+                    <Select value={selectedBoxId} onValueChange={setSelectedBoxId}>
+                      <SelectTrigger className="border-0 shadow-none flex-1">
+                        <SelectValue placeholder="Seleccionar Box" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {operador.boxes.map((ob) => (
+                          <SelectItem key={ob.box.id} value={ob.box.id}>
+                            {ob.box.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Estado de Sectores - Mitad derecha */}
+            {sectoresControlables.length > 0 && (
+              <Card className="border border-slate-200 bg-white flex-1">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-500 shrink-0">Estado:</span>
+                    {sectoresControlables.map((os) => {
+                      const estaCerrado = os.sector.cerradoManualmente
+                      const isLoading = loadingSectorEstado === os.sector.id
+                      return (
+                        <button
+                          key={os.sector.id}
+                          onClick={() => toggleSectorEstado(os.sector.id, !estaCerrado)}
+                          disabled={isLoading}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+                            estaCerrado 
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200' 
+                              : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-200'
+                          } ${isLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: os.sector.color }}
+                          />
+                          {isLoading ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <>
+                              <span>{os.sector.nombre}</span>
+                              {estaCerrado ? (
+                                <Unlock className="w-3 h-3" />
+                              ) : (
+                                <Lock className="w-3 h-3" />
+                              )}
+                            </>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : null}
 
         {/* Mensaje de error */}
         {error && (
@@ -489,6 +595,9 @@ export default function LlamadorPage() {
                   </div>
 
                   <div className="space-y-3">
+                    <p className="text-sm text-slate-600 font-semibold mb-3">
+                      ¿Qué desea hacer?
+                    </p>
                     {/* Botón de Volver a Llamar */}
                     <Button
                       size="lg"
@@ -520,8 +629,8 @@ export default function LlamadorPage() {
                     </div>
                     <Button
                       size="lg"
-                      className="w-full text-slate-900"
-                      style={{ backgroundColor: '#97f7aa' }}
+                      variant="outline"
+                      className="w-full"
                       onClick={() => handleActualizarEstado('finalizado')}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" />

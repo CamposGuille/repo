@@ -23,6 +23,7 @@ interface Admin {
 
 interface OperadorSector {
   id: string
+  puedeControlarTurnos?: boolean
   sector: {
     id: string
     nombre: string
@@ -44,6 +45,7 @@ interface Sector {
   color: string
   activo: boolean
   numeroTurno: number
+  horarios?: string | null
 }
 
 interface Box {
@@ -68,14 +70,26 @@ export default function AdminPage() {
   const [loadingOperadores, setLoadingOperadores] = useState(false)
   const [editOperador, setEditOperador] = useState<Operador | null>(null)
   const [operadorDialogOpen, setOperadorDialogOpen] = useState(false)
-  const [operadorForm, setOperadorForm] = useState({ username: '', password: '', nombre: '', sectorIds: [] as string[], boxIds: [] as string[], activo: true })
+  const [operadorForm, setOperadorForm] = useState({ 
+    username: '', 
+    password: '', 
+    nombre: '', 
+    sectores: [] as { sectorId: string; puedeControlarTurnos: boolean }[], 
+    boxIds: [] as string[], 
+    activo: true 
+  })
 
   // Estado para sectores
   const [sectores, setSectores] = useState<Sector[]>([])
   const [loadingSectores, setLoadingSectores] = useState(false)
   const [editSector, setEditSector] = useState<Sector | null>(null)
   const [sectorDialogOpen, setSectorDialogOpen] = useState(false)
-  const [sectorForm, setSectorForm] = useState({ nombre: '', color: '#10b981', activo: true })
+  const [sectorForm, setSectorForm] = useState({ 
+    nombre: '', 
+    color: '#10b981', 
+    activo: true, 
+    horarios: [] as { inicio: string; fin: string }[] 
+  })
 
   // Estado para estadísticas
   const [estadisticas, setEstadisticas] = useState<any>(null)
@@ -134,6 +148,11 @@ export default function AdminPage() {
   const [editMonitor, setEditMonitor] = useState<any>(null)
   const [monitorDialogOpen, setMonitorDialogOpen] = useState(false)
   const [monitorForm, setMonitorForm] = useState({ nombre: '', descripcion: '', sectorIds: [] as string[], activo: true })
+  
+  // Estado para videos del monitor
+  const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null)
+  const [monitorVideos, setMonitorVideos] = useState<any[]>([])
+  const [loadingVideos, setLoadingVideos] = useState(false)
 
   // Estado para boxes
   const [boxes, setBoxes] = useState<Box[]>([])
@@ -258,12 +277,12 @@ export default function AdminPage() {
       return
     }
 
-    // Validar tamaño (máximo 1MB)
-    const maxSize = 1 * 1024 * 1024
+    // Validar tamaño (máximo 500KB - los sonidos cortos son suficientes)
+    const maxSize = 500 * 1024
     if (file.size > maxSize) {
       toast({
         title: 'Error',
-        description: 'El archivo es demasiado grande. Máximo permitido: 1MB',
+        description: 'El archivo es demasiado grande. Máximo permitido: 500KB. Use un sonido más corto.',
         variant: 'destructive',
       })
       return
@@ -335,7 +354,7 @@ export default function AdminPage() {
     e.preventDefault()
 
     // Validar que haya al menos un sector seleccionado
-    if (!operadorForm.sectorIds || operadorForm.sectorIds.length === 0) {
+    if (!operadorForm.sectores || operadorForm.sectores.length === 0) {
       toast({
         title: 'Error',
         description: 'Debe seleccionar al menos un sector',
@@ -366,7 +385,7 @@ export default function AdminPage() {
         // Cerrar diálogo y limpiar formulario
         setOperadorDialogOpen(false)
         setEditOperador(null)
-        setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], boxIds: [], activo: true })
+        setOperadorForm({ username: '', password: '', nombre: '', sectores: [], boxIds: [], activo: true })
         cargarOperadores()
       } else {
         toast({
@@ -391,7 +410,10 @@ export default function AdminPage() {
       username: operador.username,
       password: '', // No mostramos la contraseña existente
       nombre: operador.nombre,
-      sectorIds: operador.sectores?.map((os: OperadorSector) => os.sector.id) || [],
+      sectores: operador.sectores?.map((os: OperadorSector) => ({ 
+        sectorId: os.sector.id, 
+        puedeControlarTurnos: os.puedeControlarTurnos || false 
+      })) || [],
       boxIds: operador.boxes?.map((ob: any) => ob.box.id) || [],
       activo: operador.activo
     })
@@ -447,11 +469,17 @@ export default function AdminPage() {
     const url = editSector ? `/api/admin/sectores/${cleanId}` : '/api/admin/sectores'
     const method = editSector ? 'PUT' : 'POST'
 
+    // Preparar datos a guardar
+    const dataToSend = {
+      ...sectorForm,
+      horarios: sectorForm.horarios.length > 0 ? JSON.stringify(sectorForm.horarios) : null
+    }
+
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sectorForm),
+        body: JSON.stringify(dataToSend),
       })
 
       const data = await response.json()
@@ -464,7 +492,7 @@ export default function AdminPage() {
         // Cerrar diálogo y limpiar formulario
         setSectorDialogOpen(false)
         setEditSector(null)
-        setSectorForm({ nombre: '', color: '#10b981', activo: true })
+        setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
         cargarSectores()
       } else {
         toast({
@@ -485,10 +513,19 @@ export default function AdminPage() {
 
   // Preparar sector para edición
   const prepararEdicionSector = (sector: Sector) => {
+    let horariosParsed: { inicio: string; fin: string }[] = []
+    if (sector.horarios) {
+      try {
+        horariosParsed = JSON.parse(sector.horarios)
+      } catch (e) {
+        console.error('Error al parsear horarios:', e)
+      }
+    }
     setSectorForm({
       nombre: sector.nombre,
       color: sector.color,
-      activo: sector.activo
+      activo: sector.activo,
+      horarios: horariosParsed
     })
     setEditSector(sector)
     setSectorDialogOpen(true)
@@ -654,6 +691,111 @@ export default function AdminPage() {
     }
   }
 
+  // Cargar videos de un monitor
+  const cargarVideosMonitor = async (monitorId: string) => {
+    setLoadingVideos(true)
+    try {
+      const response = await fetch(`/api/admin/monitores/${monitorId}/videos`)
+      const data = await response.json()
+      if (response.ok) {
+        setMonitorVideos(data || [])
+      }
+    } catch (error) {
+      console.error('Error al cargar videos:', error)
+    } finally {
+      setLoadingVideos(false)
+    }
+  }
+
+  // Subir video a un monitor
+  const handleSubirVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedMonitorId) return
+
+    // Validar tipo de archivo (video)
+    const allowedTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/avi', 'video/mov']
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Error',
+        description: 'Solo se permiten archivos de video: MP4, WebM, OGG, AVI, MOV',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Validar tamaño (máximo 500MB)
+    const maxSize = 500 * 1024 * 1024
+    if (file.size > maxSize) {
+      toast({
+        title: 'Error',
+        description: 'El archivo es demasiado grande. Máximo permitido: 500MB',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('monitorId', selectedMonitorId)
+
+    try {
+      const response = await fetch('/api/videos/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast({
+          title: '¡Éxito!',
+          description: 'Video subido correctamente',
+        })
+        cargarVideosMonitor(selectedMonitorId)
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Error al subir el video',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      console.error('Error al subir video:', error)
+      toast({
+        title: 'Error',
+        description: 'Error de conexión al subir el video',
+        variant: 'destructive',
+      })
+    }
+    
+    // Limpiar el input
+    e.target.value = ''
+  }
+
+  // Eliminar video
+  const eliminarVideo = async (videoId: string) => {
+    if (!confirm('¿Está seguro de eliminar este video?')) return
+
+    try {
+      const response = await fetch(`/api/admin/videos/${videoId}`, { method: 'DELETE' })
+      if (response.ok) {
+        toast({ title: '¡Éxito!', description: 'Video eliminado' })
+        if (selectedMonitorId) {
+          cargarVideosMonitor(selectedMonitorId)
+        }
+      } else {
+        const data = await response.json()
+        toast({
+          title: 'Error',
+          description: data.error || 'Error al eliminar video',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      console.error('Error al eliminar video:', error)
+    }
+  }
+
   // Cargar boxes
   const cargarBoxes = async () => {
     setLoadingBoxes(true)
@@ -762,6 +904,40 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error('Error al guardar configuración:', error)
+    }
+  }
+
+  // Reiniciar todos los turnos
+  const reiniciarTurnos = async () => {
+    if (!confirm('¿Está seguro de que desea reiniciar todos los turnos? Esta acción eliminará todos los turnos existentes y reiniciará los contadores.')) {
+      return
+    }
+    
+    try {
+      const response = await fetch('/api/turnos/reiniciar', {
+        method: 'POST'
+      })
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast({
+          title: 'Turnos reiniciados',
+          description: data.message
+        })
+        cargarEstadisticas()
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Error al reiniciar turnos',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Error al reiniciar turnos',
+        variant: 'destructive'
+      })
     }
   }
 
@@ -1062,14 +1238,14 @@ export default function AdminPage() {
               <Dialog open={operadorDialogOpen} onOpenChange={(open) => {
                 if (!open) {
                   setEditOperador(null)
-                  setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], boxIds: [], activo: true })
+                  setOperadorForm({ username: '', password: '', nombre: '', sectores: [], boxIds: [], activo: true })
                 }
                 setOperadorDialogOpen(open)
               }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => {
                     setEditOperador(null)
-                    setOperadorForm({ username: '', password: '', nombre: '', sectorIds: [], boxIds: [], activo: true })
+                    setOperadorForm({ username: '', password: '', nombre: '', sectores: [], boxIds: [], activo: true })
                   }}>
                     <Plus className="w-4 h-4 mr-2" />
                     Nuevo Operador
@@ -1107,33 +1283,65 @@ export default function AdminPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Sectores</Label>
-                      <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-2">
-                        {sectores.map((sector) => (
-                          <div key={sector.id} className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id={`op-sector-${sector.id}`}
-                              checked={operadorForm.sectorIds.includes(sector.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setOperadorForm({
-                                    ...operadorForm,
-                                    sectorIds: [...operadorForm.sectorIds, sector.id]
-                                  })
-                                } else {
-                                  setOperadorForm({
-                                    ...operadorForm,
-                                    sectorIds: operadorForm.sectorIds.filter(id => id !== sector.id)
-                                  })
-                                }
-                              }}
-                            />
-                            <label htmlFor={`op-sector-${sector.id}`} className="text-sm cursor-pointer">
-                              {sector.nombre}
-                            </label>
-                          </div>
-                        ))}
+                      <div className="max-h-60 overflow-y-auto border rounded p-2 space-y-2">
+                        {sectores.map((sector) => {
+                          const sectoresForm = operadorForm.sectores || []
+                          const isSelected = sectoresForm.some(s => s.sectorId === sector.id)
+                          const puedeControlar = sectoresForm.find(s => s.sectorId === sector.id)?.puedeControlarTurnos || false
+                          
+                          return (
+                            <div key={sector.id} className="flex items-center justify-between p-2 rounded hover:bg-slate-50">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`op-sector-${sector.id}`}
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setOperadorForm({
+                                        ...operadorForm,
+                                        sectores: [...sectoresForm, { sectorId: sector.id, puedeControlarTurnos: false }]
+                                      })
+                                    } else {
+                                      setOperadorForm({
+                                        ...operadorForm,
+                                        sectores: sectoresForm.filter(s => s.sectorId !== sector.id)
+                                      })
+                                    }
+                                  }}
+                                />
+                                <label htmlFor={`op-sector-${sector.id}`} className="text-sm cursor-pointer flex items-center gap-2">
+                                  <span
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: sector.color }}
+                                  />
+                                  {sector.nombre}
+                                </label>
+                              </div>
+                              {isSelected && (
+                                <label className="flex items-center gap-1 text-xs text-slate-600 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={puedeControlar}
+                                    onChange={(e) => {
+                                      setOperadorForm({
+                                        ...operadorForm,
+                                        sectores: sectoresForm.map(s => 
+                                          s.sectorId === sector.id 
+                                            ? { ...s, puedeControlarTurnos: e.target.checked }
+                                            : s
+                                        )
+                                      })
+                                    }}
+                                  />
+                                  Abrir/Cerrar turnos
+                                </label>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
+                      <p className="text-xs text-slate-500">Marque "Abrir/Cerrar turnos" para permitir que el operador habilite o deshabilite turnos en ese sector</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Boxes Asignados</Label>
@@ -1251,20 +1459,20 @@ export default function AdminPage() {
               <Dialog open={sectorDialogOpen} onOpenChange={(open) => {
                 if (!open) {
                   setEditSector(null)
-                  setSectorForm({ nombre: '', color: '#10b981', activo: true })
+                  setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
                 }
                 setSectorDialogOpen(open)
               }}>
                 <DialogTrigger asChild>
                   <Button onClick={() => {
                     setEditSector(null)
-                    setSectorForm({ nombre: '', color: '#10b981', activo: true })
+                    setSectorForm({ nombre: '', color: '#10b981', activo: true, horarios: [] })
                   }}>
                     <Plus className="w-4 h-4 mr-2" />
                     Nuevo Sector
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>{editSector ? 'Editar Sector' : 'Nuevo Sector'}</DialogTitle>
                   </DialogHeader>
@@ -1301,7 +1509,84 @@ export default function AdminPage() {
                       />
                       <Label>Activo</Label>
                     </div>
-                    <div className="flex gap-2 justify-end">
+                    
+                    {/* Sección de Horarios */}
+                    <div className="border-t pt-4 mt-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <div>
+                          <h4 className="font-semibold">Horarios de Atención</h4>
+                          <p className="text-sm text-slate-500">Si no se configuran horarios, el sector estará siempre activo</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSectorForm({
+                              ...sectorForm,
+                              horarios: [...sectorForm.horarios, { inicio: '08:00', fin: '12:00' }]
+                            })
+                          }}
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Agregar Horario
+                        </Button>
+                      </div>
+                      
+                      {sectorForm.horarios.length > 0 ? (
+                        <div className="space-y-2">
+                          {sectorForm.horarios.map((horario, index) => (
+                            <div key={index} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg">
+                              <div className="flex items-center gap-2 flex-1">
+                                <Label className="text-sm">Desde:</Label>
+                                <Input
+                                  type="time"
+                                  value={horario.inicio}
+                                  onChange={(e) => {
+                                    const nuevosHorarios = [...sectorForm.horarios]
+                                    nuevosHorarios[index] = { ...nuevosHorarios[index], inicio: e.target.value }
+                                    setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
+                                  }}
+                                  className="w-32"
+                                />
+                                <Label className="text-sm">Hasta:</Label>
+                                <Input
+                                  type="time"
+                                  value={horario.fin}
+                                  onChange={(e) => {
+                                    const nuevosHorarios = [...sectorForm.horarios]
+                                    nuevosHorarios[index] = { ...nuevosHorarios[index], fin: e.target.value }
+                                    setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  const nuevosHorarios = sectorForm.horarios.filter((_, i) => i !== index)
+                                  setSectorForm({ ...sectorForm, horarios: nuevosHorarios })
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-slate-500 bg-slate-50 rounded-lg">
+                          Sin horarios configurados - Sector siempre activo
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2 justify-end pt-4">
+                      <Button type="button" variant="outline" onClick={() => setSectorDialogOpen(false)}>
+                        Cancelar
+                      </Button>
                       <Button type="submit">{editSector ? 'Actualizar' : 'Crear'}</Button>
                     </div>
                   </form>
@@ -1641,7 +1926,7 @@ export default function AdminPage() {
                         className="file:mr-2"
                       />
                       <p className="text-sm text-slate-500">
-                        Suba un archivo de audio para cuando se llama un turno. Formatos: MP3, WAV, OGG (máx 1MB)
+                        Suba un archivo de audio para cuando se llama un turno. Formatos: MP3, WAV, OGG (máx 500KB)
                       </p>
                       {configForm.monitorSonidoUrl && (
                         <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
@@ -1715,103 +2000,28 @@ export default function AdminPage() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
 
-          {/* Tab Tickets */}
-          <TabsContent value="tickets" className="mt-6">
-            <Card>
+            {/* Card Reiniciar Turnos */}
+            <Card className="mt-6 border-red-200 bg-red-50">
               <CardHeader>
-                <CardTitle>Configuración de Tickets</CardTitle>
+                <CardTitle className="text-red-700">Reiniciar Turnos</CardTitle>
+                <p className="text-sm text-red-600">
+                  Esta acción eliminará todos los turnos existentes y reiniciará los contadores de cada sector a 01
+                </p>
               </CardHeader>
               <CardContent>
-                <form onSubmit={guardarConfiguracion} className="space-y-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Personalización del Ticket</h3>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketLogoUrl">URL del Logo Personalizado</Label>
-                      <Input
-                        id="ticketLogoUrl"
-                        value={configForm.ticketLogoUrl}
-                        onChange={(e) => setConfigForm({ ...configForm, ticketLogoUrl: e.target.value })}
-                        placeholder="https://ejemplo.com/logo.png"
-                      />
-                      <p className="text-sm text-slate-500">Ingrese la URL completa de la imagen del logo</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketEncabezado">Encabezado del Ticket</Label>
-                      <Input
-                        id="ticketEncabezado"
-                        value={configForm.ticketEncabezado}
-                        onChange={(e) => setConfigForm({ ...configForm, ticketEncabezado: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketPie">Pie de Página del Ticket</Label>
-                      <Input
-                        id="ticketPie"
-                        value={configForm.ticketPie}
-                        onChange={(e) => setConfigForm({ ...configForm, ticketPie: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ticketColorPrimario">Color Primario</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="ticketColorPrimario"
-                          type="color"
-                          value={configForm.ticketColorPrimario}
-                          onChange={(e) => setConfigForm({ ...configForm, ticketColorPrimario: e.target.value })}
-                          className="w-20 h-10"
-                        />
-                        <Input
-                          value={configForm.ticketColorPrimario}
-                          onChange={(e) => setConfigForm({ ...configForm, ticketColorPrimario: e.target.value })}
-                          placeholder="#1e40af"
-                          className="flex-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Elementos a Mostrar</h3>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="ticketMostrarFecha"
-                        checked={configForm.ticketMostrarFecha}
-                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarFecha: checked })}
-                      />
-                      <Label htmlFor="ticketMostrarFecha">Mostrar Fecha</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="ticketMostrarHora"
-                        checked={configForm.ticketMostrarHora}
-                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarHora: checked })}
-                      />
-                      <Label htmlFor="ticketMostrarHora">Mostrar Hora</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="ticketMostrarOperador"
-                        checked={configForm.ticketMostrarOperador}
-                        onCheckedChange={(checked) => setConfigForm({ ...configForm, ticketMostrarOperador: checked })}
-                      />
-                      <Label htmlFor="ticketMostrarOperador">Mostrar Operador</Label>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 justify-end">
-                    <Button type="submit">Guardar Configuración</Button>
-                  </div>
-                </form>
+                <Button 
+                  variant="destructive" 
+                  size="lg"
+                  onClick={reiniciarTurnos}
+                >
+                  Reiniciar Todos los Turnos
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Tab Tickets */}
+          {/* Tab Tickets - Editor de Tickets */}
           <TabsContent value="tickets" className="mt-6">
             <h2 className="text-2xl font-bold mb-4">Editor de Tickets</h2>
             <TicketEditor />
@@ -1907,48 +2117,130 @@ export default function AdminPage() {
                 <Loader2 className="w-12 h-12 animate-spin text-primary" />
               </div>
             ) : (
-              <Card>
-                <CardContent className="p-0">
-                  <div className="max-h-96 overflow-y-auto">
-                    {monitores.map((monitor) => (
-                      <div key={monitor.id} className="flex flex-col gap-2 p-4 border-b last:border-b-0">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-semibold">{monitor.nombre}</div>
-                            {monitor.descripcion && (
-                              <div className="text-sm text-slate-600">{monitor.descripcion}</div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 rounded text-xs ${monitor.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {monitor.activo ? 'Activo' : 'Inactivo'}
-                            </span>
-                            <Button size="icon" variant="ghost" onClick={() => prepararEdicionMonitor(monitor)}>
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => eliminarMonitor(monitor.id)}>
-                              <Trash2 className="w-4 h-4 text-red-500" />
-                            </Button>
-                          </div>
-                        </div>
-                        {monitor.sectores && monitor.sectores.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {monitor.sectores.map((ms: any) => (
-                              <span
-                                key={ms.sector.id}
-                                className="px-2 py-1 rounded text-xs text-white"
-                                style={{ backgroundColor: ms.sector.color }}
-                              >
-                                {ms.sector.nombre}
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Lista de Monitores */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Monitores</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="max-h-80 overflow-y-auto">
+                      {monitores.map((monitor) => (
+                        <div 
+                          key={monitor.id} 
+                          className={`flex flex-col gap-2 p-4 border-b last:border-b-0 cursor-pointer hover:bg-slate-50 ${selectedMonitorId === monitor.id ? 'bg-primary/10' : ''}`}
+                          onClick={() => {
+                            setSelectedMonitorId(monitor.id)
+                            cargarVideosMonitor(monitor.id)
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-semibold">{monitor.nombre}</div>
+                              {monitor.descripcion && (
+                                <div className="text-sm text-slate-600">{monitor.descripcion}</div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded text-xs ${monitor.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {monitor.activo ? 'Activo' : 'Inactivo'}
                               </span>
-                            ))}
+                              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); prepararEdicionMonitor(monitor) }}>
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); eliminarMonitor(monitor.id) }}>
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
                           </div>
-                        )}
+                          {monitor.sectores && monitor.sectores.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {monitor.sectores.map((ms: any) => (
+                                <span
+                                  key={ms.sector.id}
+                                  className="px-2 py-1 rounded text-xs text-white"
+                                  style={{ backgroundColor: ms.sector.color }}
+                                >
+                                  {ms.sector.nombre}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Gestión de Videos del Monitor Seleccionado */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg">
+                        Videos {selectedMonitorId ? `- ${monitores.find(m => m.id === selectedMonitorId)?.nombre || ''}` : ''}
+                      </CardTitle>
+                      {selectedMonitorId && (
+                        <div>
+                          <input
+                            type="file"
+                            accept="video/*"
+                            onChange={handleSubirVideo}
+                            className="hidden"
+                            id="video-upload"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => document.getElementById('video-upload')?.click()}
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Subir Video
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {!selectedMonitorId ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <p>Seleccione un monitor para gestionar sus videos</p>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                    ) : loadingVideos ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      </div>
+                    ) : monitorVideos.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <p>Este monitor no tiene videos asignados</p>
+                        <p className="text-sm mt-2">Haga clic en "Subir Video" para agregar uno</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-80 overflow-y-auto">
+                        {monitorVideos.map((video: any) => (
+                          <div key={video.id} className="flex items-center justify-between p-4 border-b last:border-b-0">
+                            <div className="flex items-center gap-3">
+                              <div className="w-16 h-10 bg-slate-200 rounded flex items-center justify-center">
+                                <span className="text-xs text-slate-500">Video</span>
+                              </div>
+                              <div>
+                                <div className="font-medium text-sm">{video.nombre}</div>
+                                <div className="text-xs text-slate-500">Orden: {video.orden}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded text-xs ${video.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {video.activo ? 'Activo' : 'Inactivo'}
+                              </span>
+                              <Button size="icon" variant="ghost" onClick={() => eliminarVideo(video.id)}>
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             )}
           </TabsContent>
         </Tabs>

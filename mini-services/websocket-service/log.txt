@@ -1,0 +1,14 @@
+$ bun --hot index.ts
+🔌 WebSocket Server iniciado en puerto 3003
+🚀 Server escuchando en puerto 3003
+   WebSocket: ws://localhost:3003
+   HTTP API: http://localhost:3003/notify/*
+✅ Cliente conectado: lM8bU1MMdOHwIA3nAAAB
+🎫 Cliente lM8bU1MMdOHwIA3nAAAB se unió al totem
+✅ Cliente conectado: pi5Dpr-bJ1IkfIq3AAAD
+🎫 Cliente pi5Dpr-bJ1IkfIq3AAAD se unió al totem
+❌ Cliente desconectado: lM8bU1MMdOHwIA3nAAAB
+✅ Cliente conectado: aAAecH2ntXlwWnccAAAF
+🎫 Cliente aAAecH2ntXlwWnccAAAF se unió al totem
+❌ Cliente desconectado: pi5Dpr-bJ1IkfIq3AAAD
+❌ Cliente desconectado: aAAecH2ntXlwWnccAAAF

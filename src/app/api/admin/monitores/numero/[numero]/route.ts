@@ -16,7 +16,7 @@ export async function GET(
       )
     }
 
-    const monitor = await db.monitor.findUnique({
+    const monitor = await db.monitor.findFirst({
       where: { numero: numeroInt },
       include: {
         sectores: {

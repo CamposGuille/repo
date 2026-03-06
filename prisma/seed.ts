@@ -1,141 +1,267 @@
 import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcrypt'
-
 const prisma = new PrismaClient()
 
 async function main() {
-  // Crear administrador por defecto si no existe
-  const adminExistente = await prisma.admin.findUnique({
-    where: { username: 'admin' }
+  console.log('🌱 Verificando base de datos...')
+
+  // ============================================
+  // VERIFICAR SI YA HAY DATOS EXISTENTES
+  // ============================================
+  const operadoresExistentes = await prisma.operador.count()
+  const sectoresExistentes = await prisma.sector.count()
+  const turnosExistentes = await prisma.turno.count()
+
+  if (operadoresExistentes > 0 || sectoresExistentes > 0 || turnosExistentes > 0) {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('⚠️  LA BASE DE DATOS YA CONTIENE DATOS')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`   👤 Operadores: ${operadoresExistentes}`)
+    console.log(`   🏢 Sectores: ${sectoresExistentes}`)
+    console.log(`   🎫 Turnos: ${turnosExistentes}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ Seed cancelado - No se modificaron datos existentes')
+    console.log('💡 Para crear datos de prueba, usa una base de datos vacía')
+    return
+  }
+
+  console.log('📝 Base de datos vacía. Creando datos de prueba...')
+
+  // ============================================
+  // 1. CREAR ADMIN
+  // ============================================
+  const admin = await prisma.admin.create({
+    data: { 
+      username: 'admin', 
+      password: 'admin123', 
+      nombre: 'Administrador',
+      activo: true 
+    }
+  })
+  console.log('✅ Admin creado:', admin.username)
+
+  // ============================================
+  // 2. CREAR SECTORES
+  // ============================================
+  const farmacia = await prisma.sector.create({
+    data: { 
+      nombre: 'Farmacia', 
+      color: '#10b981', 
+      numeroTurno: 1,
+      activo: true 
+    }
   })
 
-  if (!adminExistente) {
-    const passwordHashed = await bcrypt.hash('admin123', 10)
-    const admin = await prisma.admin.create({
-      data: {
-        username: 'admin',
-        password: passwordHashed,
-        nombre: 'Administrador',
-        activo: true
-      }
-    })
-    console.log('Administrador por defecto creado:', admin.username)
-  } else {
-    console.log('El administrador por defecto ya existe')
-  }
+  const informes = await prisma.sector.create({
+    data: { 
+      nombre: 'Informes', 
+      color: '#00d5ff', 
+      numeroTurno: 1,
+      activo: true 
+    }
+  })
 
-  // Crear sectores si no existen
-  const sectoresExistentes = await prisma.sector.count()
-  
-  if (sectoresExistentes === 0) {
-    const sectores = await Promise.all([
-      prisma.sector.create({
-        data: { nombre: 'Farmacia', color: '#10b981', activo: true, numeroTurno: 1 }
-      }),
-      prisma.sector.create({
-        data: { nombre: 'Informes', color: '#3b82f6', activo: true, numeroTurno: 1 }
-      }),
-      prisma.sector.create({
-        data: { nombre: 'Laboratorio', color: '#8b5cf6', activo: true, numeroTurno: 1 }
-      }),
-      prisma.sector.create({
-        data: { nombre: 'Vacunatorio', color: '#f59e0b', activo: true, numeroTurno: 1 }
-      })
-    ])
-    console.log('Sectores creados:', sectores.map(s => s.nombre).join(', '))
-  } else {
-    console.log('Ya existen sectores')
-  }
+  const vacunatorio = await prisma.sector.create({
+    data: { 
+      nombre: 'Vacunatorio', 
+      color: '#fa0085', 
+      numeroTurno: 1,
+      activo: true 
+    }
+  })
 
-  // Crear cajas/boxes si no existen
-  const boxesExistentes = await prisma.box.count()
-  
-  if (boxesExistentes === 0) {
-    const boxes = await Promise.all([
-      prisma.box.create({
-        data: { nombre: 'Box 1', descripcion: 'Atención general', activo: true }
-      }),
-      prisma.box.create({
-        data: { nombre: 'Box 2', descripcion: 'Atención general', activo: true }
-      }),
-      prisma.box.create({
-        data: { nombre: 'Box 3', descripcion: 'Atención prioritaria', activo: true }
-      })
-    ])
-    console.log('Boxes creados:', boxes.map(b => b.nombre).join(', '))
-  } else {
-    console.log('Ya existen boxes')
-  }
+  const laboratorio = await prisma.sector.create({
+    data: { 
+      nombre: 'Laboratorio - Resultados', 
+      color: '#1e00ff', 
+      numeroTurno: 1,
+      activo: true 
+    }
+  })
 
-  // Crear operadores si no existen
-  const operadoresExistentes = await prisma.operador.count()
-  
-  if (operadoresExistentes === 0) {
-    const passwordHashed = await bcrypt.hash('admin123', 10)
-    
-    // Obtener sectores y boxes para asignar
-    const sectores = await prisma.sector.findMany()
-    const boxes = await prisma.box.findMany()
-    
-    const operador1 = await prisma.operador.create({
-      data: {
-        username: 'operador1',
-        password: passwordHashed,
-        nombre: 'Operador Uno',
-        activo: true,
-        sectores: {
-          create: sectores.slice(0, 2).map(s => ({ sectorId: s.id }))
-        },
-        boxes: boxes.length > 0 ? {
-          create: [{ boxId: boxes[0].id }]
-        } : undefined
-      }
-    })
-    
-    const operador2 = await prisma.operador.create({
-      data: {
-        username: 'operador2',
-        password: passwordHashed,
-        nombre: 'Operador Dos',
-        activo: true,
-        sectores: {
-          create: sectores.slice(2).map(s => ({ sectorId: s.id }))
-        },
-        boxes: boxes.length > 1 ? {
-          create: [{ boxId: boxes[1].id }]
-        } : undefined
-      }
-    })
-    
-    console.log('Operadores creados:', operador1.username, operador2.username)
-  } else {
-    console.log('Ya existen operadores')
-  }
+  console.log('✅ Sectores creados: Farmacia, Informes, Vacunatorio, Laboratorio')
 
-  // Crear monitor por defecto si no existe
-  const monitorExistente = await prisma.monitor.count()
-  
-  if (monitorExistente === 0) {
-    const sectores = await prisma.sector.findMany()
-    const monitor = await prisma.monitor.create({
-      data: {
-        nombre: 'Monitor Principal',
-        descripcion: 'Monitor de sala de espera',
-        activo: true,
-        sectores: {
-          create: sectores.map(s => ({ sectorId: s.id }))
-        }
-      }
-    })
-    console.log('Monitor creado:', monitor.nombre)
-  } else {
-    console.log('Ya existen monitores')
-  }
+  // ============================================
+  // 3. CREAR OPERADORES
+  // ============================================
+  const operador1 = await prisma.operador.create({
+    data: {
+      username: 'operador1',
+      password: 'operador123',
+      nombre: 'María García',
+      activo: true
+    }
+  })
+
+  const operador2 = await prisma.operador.create({
+    data: {
+      username: 'operador2',
+      password: 'operador123',
+      nombre: 'Juan Pérez',
+      activo: true
+    }
+  })
+
+  const operador3 = await prisma.operador.create({
+    data: {
+      username: 'operador3',
+      password: 'operador123',
+      nombre: 'Ana Rodríguez',
+      activo: true
+    }
+  })
+
+  console.log('✅ Operadores creados: operador1, operador2, operador3')
+
+  // ============================================
+  // 4. ASIGNAR SECTORES A OPERADORES
+  // ============================================
+  await prisma.operadorSector.createMany({
+    data: [
+      { operadorId: operador1.id, sectorId: farmacia.id },
+      { operadorId: operador1.id, sectorId: informes.id },
+      { operadorId: operador2.id, sectorId: vacunatorio.id },
+      { operadorId: operador2.id, sectorId: laboratorio.id },
+      { operadorId: operador3.id, sectorId: farmacia.id },
+      { operadorId: operador3.id, sectorId: informes.id },
+      { operadorId: operador3.id, sectorId: vacunatorio.id },
+      { operadorId: operador3.id, sectorId: laboratorio.id },
+    ]
+  })
+  console.log('✅ Sectores asignados a operadores')
+
+  // ============================================
+  // 5. CREAR BOXES
+  // ============================================
+  const box1 = await prisma.box.create({
+    data: {
+      nombre: 'Box 1',
+      descripcion: 'Ventanilla principal',
+      activo: true
+    }
+  })
+
+  const box2 = await prisma.box.create({
+    data: {
+      nombre: 'Box 2',
+      descripcion: 'Ventanilla secundaria',
+      activo: true
+    }
+  })
+
+  const box3 = await prisma.box.create({
+    data: {
+      nombre: 'Box 3',
+      descripcion: 'Box de informes',
+      activo: true
+    }
+  })
+
+  const box4 = await prisma.box.create({
+    data: {
+      nombre: 'Box 4',
+      descripcion: 'Box de vacunatorio',
+      activo: true
+    }
+  })
+
+  console.log('✅ Boxes creados: Box 1, Box 2, Box 3, Box 4')
+
+  // ============================================
+  // 6. ASIGNAR BOXES A OPERADORES
+  // ============================================
+  await prisma.operadorBox.createMany({
+    data: [
+      { operadorId: operador1.id, boxId: box1.id },
+      { operadorId: operador1.id, boxId: box2.id },
+      { operadorId: operador2.id, boxId: box3.id },
+      { operadorId: operador2.id, boxId: box4.id },
+      { operadorId: operador3.id, boxId: box1.id },
+      { operadorId: operador3.id, boxId: box2.id },
+      { operadorId: operador3.id, boxId: box3.id },
+      { operadorId: operador3.id, boxId: box4.id },
+    ]
+  })
+  console.log('✅ Boxes asignados a operadores')
+
+  // ============================================
+  // 7. CREAR MONITORES
+  // ============================================
+  const m1 = await prisma.monitor.create({
+    data: { 
+      numero: 1, 
+      nombre: 'Monitor 1', 
+      descripcion: 'Sala de espera principal',
+      activo: true 
+    }
+  })
+
+  const m2 = await prisma.monitor.create({
+    data: { 
+      numero: 2, 
+      nombre: 'Monitor 2', 
+      descripcion: 'Sala de espera secundaria',
+      activo: true 
+    }
+  })
+
+  const m3 = await prisma.monitor.create({
+    data: { 
+      numero: 3, 
+      nombre: 'Monitor 3', 
+      descripcion: 'Entrada principal',
+      activo: true 
+    }
+  })
+
+  console.log('✅ Monitores creados: Monitor 1, Monitor 2, Monitor 3')
+
+  // ============================================
+  // 8. ASIGNAR SECTORES A MONITORES
+  // ============================================
+  await prisma.monitorSector.createMany({
+    data: [
+      { monitorId: m1.id, sectorId: farmacia.id },
+      { monitorId: m1.id, sectorId: informes.id },
+      { monitorId: m1.id, sectorId: vacunatorio.id },
+      { monitorId: m1.id, sectorId: laboratorio.id },
+      { monitorId: m2.id, sectorId: informes.id },
+      { monitorId: m3.id, sectorId: farmacia.id },
+      { monitorId: m3.id, sectorId: informes.id },
+      { monitorId: m3.id, sectorId: vacunatorio.id },
+    ]
+  })
+  console.log('✅ Sectores asignados a monitores')
+
+  // ============================================
+  // 9. CREAR CONFIGURACIÓN
+  // ============================================
+  await prisma.configuracion.create({
+    data: { 
+      id: 'default',
+      titulo: 'Sistema de Turnos',
+      subtitulo: 'Plataforma de autogestión y atención',
+    }
+  })
+  console.log('✅ Configuración creada')
+
+  // ============================================
+  // RESUMEN
+  // ============================================
+  console.log('\n🎉 Seed completado exitosamente!')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('📋 RESUMEN DE DATOS CREADOS:')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('👤 Admin: admin / admin123')
+  console.log('🏢 Sectores: 4 (Farmacia, Informes, Vacunatorio, Laboratorio)')
+  console.log('👥 Operadores: 3 (operador1, operador2, operador3)')
+  console.log('📦 Boxes: 4 (Box 1-4)')
+  console.log('🖥️  Monitores: 3 (Monitor 1-3)')
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 }
 
 main()
   .catch((e) => {
-    console.error(e)
+    console.error('❌ Error en seed:', e)
     process.exit(1)
   })
   .finally(async () => {

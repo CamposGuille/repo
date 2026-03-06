@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,26 +6,6 @@ datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Modelos para el Sistema de Gestión de Turnos
 
 model Admin {
   id        String   @id @default(cuid())
@@ -43,153 +17,153 @@ model Admin {
   updatedAt DateTime @updatedAt
 }
 
+model Box {
+  id          String        @id @default(cuid())
+  nombre      String        @unique
+  descripcion String?
+  activo      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  operadores  OperadorBox[]
+  turnos      Turno[]
+}
+
 model Configuracion {
   id                    String   @id @default("default")
   titulo                String   @default("Sistema de Turnos")
-  subtitulo              String   @default("Plataforma de autogestión y atención")
-  descripcion            String   @default("Seleccione la opción que corresponda según su rol en el sistema")
-  monitorId             String?  // Monitor principal seleccionado
-
-  // Textos del Tótem de Autogestión
-  totemTitulo            String   @default("Tótem de Autogestión")
-  totemDescripcion       String   @default("Para clientes que deseen sacar un turno")
+  subtitulo             String   @default("Plataforma de autogestión y atención")
+  descripcion           String   @default("Seleccione la opción que corresponda según su rol en el sistema")
+  monitorId             String?
+  totemTitulo           String   @default("Tótem de Autogestión")
+  totemDescripcion      String   @default("Para clientes que deseen sacar un turno")
   totemInstrucciones    String   @default("Ingrese su DNI y seleccione el servicio correspondiente")
-  totemLogoUrl          String?  // URL del logo para el header del tótem
-
-  // Textos del Monitor de Turnos
-  monitorTitulo          String   @default("Monitor de Turnos")
-  monitorSubtitulo       String   @default("Espere en la sala a ser llamado")
+  totemLogoUrl          String?
+  monitorTitulo         String   @default("Monitor de Turnos")
+  monitorSubtitulo      String   @default("Espere en la sala a ser llamado")
   monitorPie            String   @default("Por favor, preste atención a los anuncios en voz alta")
-  monitorSonidoUrl      String?  // Sonido de llamada (base64 o URL)
-
-  // Textos del Operador
-  operadorTitulo         String   @default("Panel del Operador")
-  operadorInstrucciones  String   @default("Seleccione un sector para comenzar a atender")
-
-  // Configuración del Ticket
-  ticketLogoUrl          String?
-  ticketEncabezado       String   @default("TICKET DE TURNO")
-  ticketPie              String   @default("Gracias por su espera")
-  ticketColorPrimario    String   @default("#1e40af")
-  ticketMostrarFecha     Boolean  @default(true)
-  ticketMostrarHora      Boolean  @default(true)
-  ticketMostrarOperador  Boolean  @default(true)
-
+  monitorSonidoUrl      String?
+  operadorTitulo        String   @default("Panel del Operador")
+  operadorInstrucciones String   @default("Seleccione un sector para comenzar a atender")
+  ticketLogoUrl         String?
+  ticketEncabezado      String   @default("TICKET DE TURNO")
+  ticketPie             String   @default("Gracias por su espera")
+  ticketColorPrimario   String   @default("#1e40af")
+  ticketMostrarFecha    Boolean  @default(true)
+  ticketMostrarHora     Boolean  @default(true)
+  ticketMostrarOperador Boolean  @default(true)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
 
 model Monitor {
-  id          String   @id @default(cuid())
-  numero      Int      @unique @default(1)
-  nombre      String   @unique
+  id          String          @id @default(cuid())
+  numero      Int             @default(1)
+  nombre      String          @unique
   descripcion String?
-  activo      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  activo      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
   sectores    MonitorSector[]
+  videos      VideoMonitor[]
 }
 
 model MonitorSector {
-  id         String   @id @default(cuid())
-  monitorId  String
-  sectorId   String
-  monitor    Monitor   @relation(fields: [monitorId], references: [id])
-  sector     Sector    @relation(fields: [sectorId], references: [id])
-  
+  id        String  @id @default(cuid())
+  monitorId String
+  sectorId  String
+  sector    Sector  @relation(fields: [sectorId], references: [id])
+  monitor   Monitor @relation(fields: [monitorId], references: [id])
+
   @@unique([monitorId, sectorId])
 }
 
-model Sector {
-  id          String   @id @default(cuid())
-  nombre      String   @unique // Ej: "Cajas", "Informes", "Atención al Cliente"
-  color       String   // Color para identificar visualmente el sector
-  activo      Boolean  @default(true)
-  numeroTurno Int      @default(1) // Contador para números de turno
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  turnos      Turno[]
-  monitores   MonitorSector[]
-  operadores  OperadorSector[]
-}
-
-model OperadorSector {
-  id         String   @id @default(cuid())
-  operadorId String
-  sectorId   String
-  operador   Operador @relation(fields: [operadorId], references: [id])
-  sector     Sector   @relation(fields: [sectorId], references: [id])
-
-  @@unique([operadorId, sectorId])
-}
-
 model Operador {
-  id        String   @id @default(cuid())
-  username  String   @unique // Username para login
-  password  String   // Password hasheado
-  nombre    String   // Nombre visible del operador
-  activo    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id        String          @id @default(cuid())
+  username  String          @unique
+  password  String
+  nombre    String
+  activo    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   sectores  OperadorSector[]
   boxes     OperadorBox[]
-  turnosLlamados Turno[] @relation("OperadorLlamadas")
+  turnos    Turno[]
 }
 
-// Modelo para Boxes (ventanillas)
-model Box {
-  id          String   @id @default(cuid())
-  nombre      String   @unique // Ej: "Box 1", "Ventanilla A"
-  descripcion String?  // Descripción opcional
-  activo      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  operadores  OperadorBox[]
-  turnos      Turno[]
-}
-
-// Relación Operador-Box (muchos a muchos)
 model OperadorBox {
   id         String   @id @default(cuid())
   operadorId String
   boxId      String
-  operador   Operador @relation(fields: [operadorId], references: [id])
   box        Box      @relation(fields: [boxId], references: [id])
+  operador   Operador @relation(fields: [operadorId], references: [id])
 
   @@unique([operadorId, boxId])
 }
 
-model Turno {
-  id             String    @id @default(cuid())
-  numero         String    // Ej: "A-001", "B-045"
-  dni            String    // DNI del cliente
-  sectorId       String    // Sector al que pertenece el turno
-  boxId          String?   // Box desde donde fue llamado
-  estado         String    @default("esperando") // "esperando", "llamado", "atendiendo", "finalizado", "ausente"
-  operadorId     String?   // Operador que llamó al turno
-  fechaCreacion  DateTime  @default(now())
-  fechaLlamado   DateTime? // Cuándo fue llamado
-  fechaAtencion  DateTime? // Cuándo comenzó a ser atendido
-  fechaFinalizado DateTime? // Cuándo finalizó
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+model OperadorSector {
+  id                   String   @id @default(cuid())
+  operadorId           String
+  sectorId             String
+  puedeControlarTurnos Boolean  @default(false)
+  sector               Sector   @relation(fields: [sectorId], references: [id])
+  operador             Operador @relation(fields: [operadorId], references: [id])
 
-  sector         Sector    @relation(fields: [sectorId], references: [id])
-  box            Box?      @relation(fields: [boxId], references: [id])
-  operador       Operador? @relation("OperadorLlamadas", fields: [operadorId], references: [id])
+  @@unique([operadorId, sectorId])
 }
 
-// Configuración de Tickets (plantillas)
+model Sector {
+  id                 String           @id @default(cuid())
+  nombre             String           @unique
+  color              String
+  activo             Boolean          @default(true)
+  cerradoManualmente Boolean          @default(false)
+  numeroTurno        Int              @default(1)
+  horarios           String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  monitores          MonitorSector[]
+  operadores         OperadorSector[]
+  turnos             Turno[]
+}
+
+model Turno {
+  id              String    @id @default(cuid())
+  numero          String
+  dni             String
+  sectorId        String
+  boxId           String?
+  estado          String    @default("esperando")
+  operadorId      String?
+  fechaCreacion   DateTime  @default(now())
+  fechaLlamado    DateTime?
+  fechaAtencion   DateTime?
+  fechaFinalizado DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  operador        Operador? @relation(fields: [operadorId], references: [id])
+  box             Box?      @relation(fields: [boxId], references: [id])
+  sector          Sector    @relation(fields: [sectorId], references: [id])
+}
+
 model TicketConfig {
   id          String   @id @default(cuid())
-  nombre      String   @unique // Nombre de la configuración (ej: "Default", "Estrecho", "Sin logo")
-  descripcion String?  // Descripción opcional
-  esDefault   Boolean  @default(false) // Si es la configuración por defecto
+  nombre      String   @unique
+  descripcion String?
+  esDefault   Boolean  @default(false)
   activo      Boolean  @default(true)
-  config      String   // JSON con toda la configuración del ticket
+  config      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model VideoMonitor {
+  id        String   @id @default(cuid())
+  nombre    String
+  ruta      String
+  orden     Int      @default(1)
+  activo    Boolean  @default(true)
+  monitorId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  monitor   Monitor  @relation(fields: [monitorId], references: [id])
 }

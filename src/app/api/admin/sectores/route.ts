@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { nombre, color } = body
+    const { nombre, color, horarios } = body
 
     // Validar datos
     if (!nombre || !color) {
@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
         nombre,
         color,
         activo: true,
-        numeroTurno: 1
+        numeroTurno: 1,
+        horarios: horarios || null
       }
     })
 

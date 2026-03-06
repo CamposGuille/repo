@@ -64,6 +64,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verificar si el sector está cerrado manualmente
+    if (sector.cerradoManualmente) {
+      return NextResponse.json(
+        { error: 'El sector está temporalmente no disponible' },
+        { status: 400 }
+      )
+    }
+
     // Generar número de turno
     // Usar la letra inicial del sector y el número secuencial
     const letra = sector.nombre.charAt(0).toUpperCase()

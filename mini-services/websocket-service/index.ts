@@ -13,6 +13,58 @@ const io = new Server(httpServer, {
 
 console.log(`🔌 WebSocket Server iniciado en puerto ${PORT}`)
 
+// Almacenar sectores conectados y sus estados de horario
+interface SectorHorario {
+  id: string
+  horarios: { inicio: string; fin: string }[]
+  activo: boolean
+}
+
+const sectoresEstado: Map<string, SectorHorario> = new Map()
+
+// Función para verificar si un sector está en horario activo
+const verificarHorarioSector = (horarios: { inicio: string; fin: string }[]): boolean => {
+  if (!horarios || horarios.length === 0) return true // Sin horarios = siempre activo
+
+  const ahora = new Date()
+  const horaActual = ahora.getHours() * 60 + ahora.getMinutes()
+
+  for (const horario of horarios) {
+    const [horaInicio, minInicio] = horario.inicio.split(':').map(Number)
+    const [horaFin, minFin] = horario.fin.split(':').map(Number)
+    
+    const inicioMinutos = horaInicio * 60 + minInicio
+    const finMinutos = horaFin * 60 + minFin
+
+    if (horaActual >= inicioMinutos && horaActual <= finMinutos) {
+      return true
+    }
+  }
+
+  return false
+}
+
+// Función para verificar todos los sectores y notificar cambios
+const verificarTodosLosHorarios = () => {
+  const cambios: { sectorId: string; activo: boolean }[] = []
+  
+  sectoresEstado.forEach((sector, sectorId) => {
+    const nuevoEstado = verificarHorarioSector(sector.horarios)
+    if (sector.activo !== nuevoEstado) {
+      sector.activo = nuevoEstado
+      cambios.push({ sectorId, activo: nuevoEstado })
+    }
+  })
+
+  if (cambios.length > 0) {
+    io.to('totem').emit('horarios-actualizados', cambios)
+    console.log(`⏰ Cambios de horario detectados: ${cambios.length} sectores actualizados`)
+  }
+}
+
+// Scheduler: verificar horarios cada minuto
+setInterval(verificarTodosLosHorarios, 60000)
+
 // Manejo de conexiones Socket.io
 io.on('connection', (socket) => {
   console.log(`✅ Cliente conectado: ${socket.id}`)
@@ -33,6 +85,29 @@ io.on('connection', (socket) => {
   socket.on('join-monitor', () => {
     socket.join('monitor')
     console.log(`📺 Cliente ${socket.id} se unió al monitor`)
+  })
+
+  // Unirse al totem
+  socket.on('join-totem', () => {
+    socket.join('totem')
+    console.log(`🎫 Cliente ${socket.id} se unió al totem`)
+  })
+
+  // Registrar sectores del totem para verificación de horarios
+  socket.on('registrar-sectores', (sectores: { id: string; horarios: { inicio: string; fin: string }[] }[]) => {
+    sectores.forEach(sector => {
+      const existente = sectoresEstado.get(sector.id)
+      if (!existente) {
+        sectoresEstado.set(sector.id, {
+          id: sector.id,
+          horarios: sector.horarios,
+          activo: verificarHorarioSector(sector.horarios)
+        })
+      } else {
+        existente.horarios = sector.horarios
+      }
+    })
+    console.log(`📋 Sectores registrados para horarios: ${sectores.length}`)
   })
 
   // Desconexión
@@ -91,6 +166,12 @@ httpServer.on('request', async (req, res) => {
           io.emit('turno-actualizado', data)
           io.to('monitor').emit('monitor-turno-actualizado', data)
           console.log(`📢 Turno actualizado broadcast: ${data.numero} - ${data.estado}`)
+          break
+
+        case '/notify/sector-estado':
+          // Notificar al totem que un sector cambió de estado
+          io.to('totem').emit('sector-estado-cambiado', data)
+          console.log(`📢 Sector estado cambiado: ${data.sectorId} - cerrado: ${data.cerradoManualmente}`)
           break
 
         default:

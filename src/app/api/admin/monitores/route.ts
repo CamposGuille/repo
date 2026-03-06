@@ -40,10 +40,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Obtener el máximo número de monitor existente
+    const maxMonitor = await db.monitor.findFirst({
+      orderBy: { numero: 'desc' },
+      select: { numero: true }
+    })
+    
+    const siguienteNumero = (maxMonitor?.numero || 0) + 1
+
     const monitor = await db.monitor.create({
       data: {
         nombre,
         descripcion: descripcion || null,
+        numero: siguienteNumero,
         activo: true,
         sectores: {
           create: sectorIds.map((sectorId: string) => ({

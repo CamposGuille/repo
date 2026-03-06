@@ -1,18 +1,72 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Clock, CheckCircle2, ArrowRight, User, Loader2, Printer } from 'lucide-react'
+import { Clock, CheckCircle2, ArrowRight, User, Loader2, Printer, AlertCircle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { io, Socket } from 'socket.io-client'
+
+interface Horario {
+  inicio: string
+  fin: string
+}
 
 interface Sector {
   id: string
   nombre: string
   color: string
   activo: boolean
+  cerradoManualmente?: boolean
+  horarios?: string | null
+}
+
+// Función para verificar si la hora actual está dentro del rango horario
+const verificarHorario = (horariosStr: string | null | undefined): { activo: boolean; horarios: Horario[] } => {
+  // Si no hay horarios configurados, el sector siempre está activo
+  if (!horariosStr) {
+    return { activo: true, horarios: [] }
+  }
+
+  let horarios: Horario[] = []
+  try {
+    horarios = JSON.parse(horariosStr)
+  } catch (e) {
+    console.error('Error al parsear horarios:', e)
+    return { activo: true, horarios: [] }
+  }
+
+  // Si no hay horarios en el array, siempre activo
+  if (horarios.length === 0) {
+    return { activo: true, horarios: [] }
+  }
+
+  // Obtener hora actual
+  const ahora = new Date()
+  const horaActual = ahora.getHours() * 60 + ahora.getMinutes() // Minutos desde medianoche
+
+  // Verificar si la hora actual está en algún rango
+  for (const horario of horarios) {
+    const [horaInicio, minInicio] = horario.inicio.split(':').map(Number)
+    const [horaFin, minFin] = horario.fin.split(':').map(Number)
+    
+    const inicioMinutos = horaInicio * 60 + minInicio
+    const finMinutos = horaFin * 60 + minFin
+
+    if (horaActual >= inicioMinutos && horaActual <= finMinutos) {
+      return { activo: true, horarios }
+    }
+  }
+
+  return { activo: false, horarios }
+}
+
+// Formatear horarios para mostrar
+const formatearHorarios = (horarios: Horario[]): string => {
+  if (horarios.length === 0) return ''
+  return horarios.map(h => `${h.inicio} - ${h.fin}`).join(' / ')
 }
 
 // Función para formatear DNI con puntos (xx.xxx.xxx)
@@ -47,7 +101,55 @@ export default function TotemPage() {
     totemLogoUrl?: string
   } | null>(null)
   const [ticketConfig, setTicketConfig] = useState<any>(null)
+  
+  // Estado para mensaje de sector fuera de horario
+  const [sectorNoDisponible, setSectorNoDisponible] = useState<{
+    nombre: string
+    horarios: Horario[]
+  } | null>(null)
+  
   const { toast } = useToast()
+  const socketRef = useRef<Socket | null>(null)
+
+  // Conectar al WebSocket para escuchar cambios de estado de sectores
+  useEffect(() => {
+    socketRef.current = io('/?XTransformPort=3003', {
+      transports: ['websocket', 'polling']
+    })
+
+    socketRef.current.on('connect', () => {
+      console.log('🔌 Totem conectado al WebSocket')
+      socketRef.current?.emit('join-totem')
+    })
+
+    // Escuchar cambios de estado de sectores
+    socketRef.current.on('sector-estado-cambiado', (data: { sectorId: string; nombre: string; cerradoManualmente: boolean }) => {
+      console.log('📢 Sector estado cambiado:', data)
+      
+      // Actualizar el estado del sector localmente
+      setSectores(prev => prev.map(sector => 
+        sector.id === data.sectorId 
+          ? { ...sector, cerradoManualmente: data.cerradoManualmente }
+          : sector
+      ))
+
+      // Si el sector seleccionado fue cerrado, mostrar mensaje y limpiar selección
+      if (selectedSector?.id === data.sectorId && data.cerradoManualmente) {
+        setSectorNoDisponible({
+          nombre: data.nombre,
+          horarios: []
+        })
+        setSelectedSector(null)
+        setDni('')
+      }
+    })
+
+    return () => {
+      socketRef.current?.disconnect()
+    }
+  }, [selectedSector])
+
+
 
   // Cargar sectores desde la API
   useEffect(() => {
@@ -120,7 +222,85 @@ export default function TotemPage() {
     cargarTicketConfig()
   }, [])
 
+  // Manejar selección de sector (con verificación de horario y cierre manual)
+  const handleSelectSector = (sector: Sector) => {
+    // Primero verificar si está cerrado manualmente por el operador
+    // No mostrar popup, simplemente no seleccionar
+    if (sector.cerradoManualmente) {
+      return
+    }
+
+    // Luego verificar horario
+    const { activo, horarios } = verificarHorario(sector.horarios)
+    
+    if (!activo) {
+      // Sector fuera de horario - mostrar mensaje
+      setSectorNoDisponible({
+        nombre: sector.nombre,
+        horarios: horarios
+      })
+      setSelectedSector(null)
+      return
+    }
+    
+    // Sector activo - seleccionar normalmente
+    setSelectedSector(sector)
+    setSectorNoDisponible(null)
+  }
+
+  // Efecto para ocultar mensaje después de 15 segundos
+  useEffect(() => {
+    if (sectorNoDisponible) {
+      const timer = setTimeout(() => {
+        setSectorNoDisponible(null)
+      }, 15000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [sectorNoDisponible])
+
   const handleNumberClick = (num: string) => {
+    // SIEMPRE verificar el horario del sector seleccionado al presionar cualquier tecla
+    if (selectedSector) {
+      // Primero verificar si está cerrado manualmente - no mostrar popup, simplemente no hacer nada
+      if (selectedSector.cerradoManualmente) {
+        return
+      }
+
+      const { activo, horarios } = verificarHorario(selectedSector.horarios)
+      if (!activo) {
+        // Sector fuera de horario - mostrar mensaje y bloquear
+        setSectorNoDisponible({
+          nombre: selectedSector.nombre,
+          horarios: horarios
+        })
+        setSelectedSector(null)
+        setDni('') // Limpiar DNI también
+        return // No agregar el número
+      }
+    } else {
+      // Si no hay sector seleccionado, verificar si HAY algún sector abierto
+      const sectoresAbiertos = sectores.filter(s => 
+        !s.cerradoManualmente && verificarHorario(s.horarios).activo
+      )
+      if (sectoresAbiertos.length === 0 && sectores.length > 0) {
+        // Verificar si hay sectores con horario configurado que estén fuera de horario
+        const sectorFueraHorario = sectores.find(s => 
+          !s.cerradoManualmente && s.horarios && !verificarHorario(s.horarios).activo
+        )
+        
+        if (sectorFueraHorario) {
+          const { horarios } = verificarHorario(sectorFueraHorario.horarios)
+          setSectorNoDisponible({
+            nombre: 'Todos los servicios',
+            horarios: horarios
+          })
+        }
+        // Si todos están cerrados manualmente, no mostrar popup - simplemente no hacer nada
+        return
+      }
+    }
+
     if (dni.length < 8) {
       setDni(dni + num)
     }
@@ -134,6 +314,7 @@ export default function TotemPage() {
     setDni('')
     setSelectedSector(null)
     setTurnoAsignado(null)
+    setSectorNoDisponible(null)
   }
 
   const handlePrint = (datos?: {
@@ -333,6 +514,18 @@ export default function TotemPage() {
   const handleSubmit = async () => {
     if (!dni || !selectedSector) return
 
+    // Verificar horario antes de generar turno
+    const { activo } = verificarHorario(selectedSector.horarios)
+    if (!activo) {
+      const { horarios } = verificarHorario(selectedSector.horarios)
+      setSectorNoDisponible({
+        nombre: selectedSector.nombre,
+        horarios: horarios
+      })
+      setSelectedSector(null)
+      return
+    }
+
     setLoading(true)
     try {
       const response = await fetch('/api/turnos', {
@@ -434,6 +627,46 @@ export default function TotemPage() {
           </p>
         </header>
 
+        {/* Mensaje de Sector No Disponible */}
+        {sectorNoDisponible && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="max-w-lg w-full shadow-2xl border-2 border-amber-500 animate-in fade-in zoom-in duration-300">
+              <CardContent className="p-8 text-center">
+                <div className="bg-amber-100 rounded-full p-4 w-20 h-20 mx-auto mb-6 flex items-center justify-center">
+                  <XCircle className="w-10 h-10 text-amber-600" />
+                </div>
+                <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">
+                  Sector No Disponible
+                </h2>
+                <p className="text-lg text-slate-700 mb-2">
+                  <strong>{sectorNoDisponible.nombre}</strong> no está atendiendo
+                </p>
+                <p className="text-slate-600 mb-4">
+                  en este horario.
+                </p>
+                {sectorNoDisponible.horarios.length > 0 && (
+                  <div className="bg-slate-100 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-slate-600 mb-2">Horario de atención:</p>
+                    <p className="text-xl font-bold text-slate-900">
+                      {formatearHorarios(sectorNoDisponible.horarios)}
+                    </p>
+                  </div>
+                )}
+                <p className="text-slate-500 text-sm">
+                  Por favor, espere o seleccione otro servicio.
+                </p>
+                <Button
+                  variant="outline"
+                  className="mt-6"
+                  onClick={() => setSectorNoDisponible(null)}
+                >
+                  Entendido
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-6">
           {/* Panel Izquierdo: Ingreso DNI */}
           <Card className="shadow-lg">
@@ -506,34 +739,62 @@ export default function TotemPage() {
             <CardContent className="space-y-4">
               {/* Lista de Sectores */}
               <div className="grid gap-3">
-                {sectores.map((sector) => (
-                  <Button
-                    key={sector.id}
-                    variant={selectedSector?.id === sector.id ? 'default' : 'outline'}
-                    size="lg"
-                    className={cn(
-                      "h-16 text-lg font-semibold justify-start px-6 transition-all",
-                      selectedSector?.id === sector.id && "shadow-lg scale-105"
-                    )}
-                    style={
-                      selectedSector?.id === sector.id
-                        ? { backgroundColor: sector.color, color: 'white', borderColor: sector.color }
-                        : { borderColor: sector.color, color: sector.color }
-                    }
-                    onClick={() => setSelectedSector(sector)}
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: sector.color }}
-                      />
-                      <span className="flex-1 text-left">{sector.nombre}</span>
-                      {selectedSector?.id === sector.id && (
-                        <CheckCircle2 className="w-5 h-5" />
+                {sectores.map((sector) => {
+                  const { activo: enHorario, horarios: horariosSector } = verificarHorario(sector.horarios)
+                  const cerradoManual = sector.cerradoManualmente
+                  const disponible = !cerradoManual && enHorario
+                  
+                  return (
+                    <Button
+                      key={sector.id}
+                      variant={selectedSector?.id === sector.id ? 'default' : 'outline'}
+                      size="lg"
+                      className={cn(
+                        "h-auto text-lg font-semibold justify-start px-6 transition-all py-4",
+                        selectedSector?.id === sector.id && "shadow-lg scale-105",
+                        !disponible && "opacity-70"
                       )}
-                    </div>
-                  </Button>
-                ))}
+                      style={
+                        selectedSector?.id === sector.id
+                          ? { backgroundColor: sector.color, color: 'white', borderColor: sector.color }
+                          : { borderColor: sector.color, color: sector.color }
+                      }
+                      onClick={() => handleSelectSector(sector)}
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div
+                            className="w-4 h-4 rounded-full"
+                            style={{ backgroundColor: sector.color }}
+                          />
+                          <div className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span>{sector.nombre}</span>
+                              {cerradoManual && (
+                                <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded font-normal">
+                                  Actualmente Cerrado
+                                </span>
+                              )}
+                              {!cerradoManual && !enHorario && horariosSector.length > 0 && (
+                                <span className="text-xs bg-amber-500 text-white px-2 py-0.5 rounded font-normal">
+                                  Fuera de horario
+                                </span>
+                              )}
+                            </div>
+                            {!cerradoManual && !enHorario && horariosSector.length > 0 && (
+                              <div className="text-xs opacity-70 mt-0.5">
+                                {formatearHorarios(horariosSector)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {selectedSector?.id === sector.id && disponible && (
+                          <CheckCircle2 className="w-5 h-5" />
+                        )}
+                      </div>
+                    </Button>
+                  )
+                })}
               </div>
 
               {/* Botón Generar Turno */}

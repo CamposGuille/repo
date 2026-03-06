@@ -43,7 +43,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { username, password, nombre, sectorIds, boxIds, activo } = body
+    const { username, password, nombre, sectores, boxIds, activo } = body
 
     // Validar datos
     if (!username || !password || !nombre) {
@@ -65,11 +65,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Si se proporcionan sectorIds, validar que existan
-    if (sectorIds && sectorIds.length > 0) {
-      for (const sectorId of sectorIds) {
+    // Si se proporcionan sectores, validar que existan
+    if (sectores && sectores.length > 0) {
+      for (const s of sectores) {
         const sector = await db.sector.findUnique({
-          where: { id: sectorId }
+          where: { id: s.sectorId || s.id }
         })
 
         if (!sector) {
@@ -107,9 +107,10 @@ export async function POST(request: NextRequest) {
         password: passwordHashed,
         nombre,
         activo: activo !== undefined ? activo : true,
-        sectores: sectorIds && sectorIds.length > 0 ? {
-          create: sectorIds.map((sectorId: string) => ({
-            sector: { connect: { id: sectorId } }
+        sectores: sectores && sectores.length > 0 ? {
+          create: sectores.map((s: any) => ({
+            sector: { connect: { id: s.sectorId || s.id } },
+            puedeControlarTurnos: s.puedeControlarTurnos || false
           }))
         } : undefined,
         boxes: boxIds && boxIds.length > 0 ? {
